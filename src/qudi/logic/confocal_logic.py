@@ -239,7 +239,7 @@ class ConfocalLogic(LogicBase):
     """
 
     # declare connectors
-    confocalscanner1 = Connector(interface='ConfocalScannerInterface')
+    scanner = Connector(interface='ScannerInterface')
     savelogic = Connector(interface='SaveLogic')
 
     # status vars
@@ -289,7 +289,7 @@ class ConfocalLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._scanning_device = self.confocalscanner1()
+        self._scanning_device = self.scanner()
         self._save_logic = self.savelogic()
 
         # Reads in the maximal scanning range. The unit of that scan range is micrometer!

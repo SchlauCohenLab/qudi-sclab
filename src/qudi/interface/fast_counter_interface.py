@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ['CounterInterface']
+__all__ = ['FastCounterInterface']
 
 from abc import abstractmethod
 from enum import Enum
 from qudi.core.module import Base
 
 
-class CounterInterface(Base):
+class FastCounterInterface(Base):
     """ Interface class to define the controls for fast counting devices.
 
     A "fast counter" is a hardware device that count events with a "good" time resolution.
@@ -158,22 +158,3 @@ class CounterInterface(Base):
         If the hardware does not support these features, the values should be None
         """
         pass
-
-class CountingMode(Enum):
-    """
-    TODO: Explain what are the counting mode and how they are used
-    """
-    CONTINUOUS = 0
-    GATED = 1
-    FINITE_GATED = 2
-
-class CounterConstraints:
-
-    def __init__(self):
-        # maximum numer of possible detectors for slow counter
-        self.max_detectors = 0
-        # frequencies in Hz
-        self.min_count_frequency = 5e-5
-        self.max_count_frequency = 5e5
-        # TODO: add CountingMode enums to this list in instances
-        self.counting_mode = []

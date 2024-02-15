@@ -4,7 +4,7 @@ __all__ = ['TimeTagger']
 
 import time
 
-from qudi.interface.counter_interface import CounterInterface
+from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.core.statusvariable import StatusVar
 import TimeTagger as tt
 import numpy as np
@@ -12,7 +12,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 
 
-class TimeTagger(CounterInterface):
+class TimeTagger(FastCounterInterface):
     """ Hardware class to controls a Time Tagger from Swabian Instruments.
 
     Example config for copy-paste:
