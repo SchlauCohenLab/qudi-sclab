@@ -17,6 +17,8 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
+from qudi.util.datastorage import TextDataStorage
+
 
 class OldConfigFileError(Exception):
     """ Exception that is thrown when an old config file is loaded.
@@ -239,8 +241,8 @@ class ConfocalLogic(LogicBase):
     """
 
     # declare connectors
-    scanner = Connector(interface='ScannerInterface')
-    savelogic = Connector(interface='SaveLogic')
+    confocalscanner1 = Connector(interface='ConfocalScannerInterface')
+    #savelogic = Connector(interface='SaveLogic')
 
     # status vars
     _clock_frequency = StatusVar('clock_frequency', 500)
@@ -284,13 +286,12 @@ class ConfocalLogic(LogicBase):
         self.depth_scan_dir_is_xz = True
         self.depth_img_is_xz = True
         self.permanent_scan = False
-        self.autosave = False
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._scanning_device = self.scanner()
-        self._save_logic = self.savelogic()
+        self._scanning_device = self.confocalscanner1()
+        #self._save_logic = self.savelogic()
 
         # Reads in the maximal scanning range. The unit of that scan range is micrometer!
         self.x_range = self._scanning_device.get_position_range()[0]
@@ -330,8 +331,8 @@ class ConfocalLogic(LogicBase):
         self.signal_start_scanning.connect(self.start_scanner, QtCore.Qt.QueuedConnection)
         self.signal_continue_scanning.connect(self.continue_scanner, QtCore.Qt.QueuedConnection)
 
-        self._signal_save_xy.connect(self._save_xy_data, QtCore.Qt.QueuedConnection)
-        self._signal_save_depth.connect(self._save_depth_data, QtCore.Qt.QueuedConnection)
+        #self._signal_save_xy.connect(self._save_xy_data, QtCore.Qt.QueuedConnection)
+        #self._signal_save_depth.connect(self._save_depth_data, QtCore.Qt.QueuedConnection)
 
         self._change_position('activation')
 
@@ -646,11 +647,11 @@ class ConfocalLogic(LogicBase):
         @return int: error code (0:OK, -1:error)
         """
         # Changes the respective value
-        if x is not None:
+        if x is not None and self.x_range[0] <= x <= self.x_range[1]:
             self._current_x = x
-        if y is not None:
+        if y is not None and self.y_range[0] <= y <= self.y_range[1]:
             self._current_y = y
-        if z is not None:
+        if z is not None and self.z_range[0] <= z <= self.z_range[1]:
             self._current_z = z
         if a is not None:
             self._current_a = a
@@ -685,6 +686,17 @@ class ConfocalLogic(LogicBase):
                       position in meters
         """
         return self._scanning_device.get_scanner_position()
+
+    def get_position_dict(self):
+        """ Get position from scanning device in a dictionary format
+
+        @return dict: Dictionary with keys 'x', 'y', 'z' and eventually 'a'
+        """
+        pos = self._scanning_device.get_scanner_position()
+        dic = {'x': pos[0], 'y': pos[1], 'z': pos[2]}
+        if len(pos) == 4:
+            dic['a'] = pos[3]
+        return dic
 
     def get_scanner_axes(self):
         """ Get axes from scanning device.
@@ -838,12 +850,6 @@ class ConfocalLogic(LogicBase):
             self.stop_scanning()
             self.signal_scan_lines_next.emit()
 
-        if self.autosave:
-            histindex = 0
-            for state in reversed(self.history):
-                self._statusVariables['history_{0}'.format(histindex)] = state.serialize()
-                histindex += 1
-
     def save_xy_data(self, colorscale_range=None, percentile_range=None, block=True):
         """ Save the current confocal xy data to file.
 
@@ -870,7 +876,8 @@ class ConfocalLogic(LogicBase):
         """ Execute save operation. Slot for _signal_save_xy.
         """
         self.signal_save_started.emit()
-        filepath = self._save_logic.get_path_for_module('Confocal')
+
+        ds = TextDataStorage(root_dir=self.module_default_data_dir)
         timestamp = datetime.datetime.now()
         # Prepare the metadata parameters (common to both saved files):
         parameters = OrderedDict()
@@ -916,14 +923,14 @@ class ConfocalLogic(LogicBase):
                        'of entries where the Signal is in counts/s:'] = self.xy_image[:, :, 3 + n]
 
             filelabel = 'confocal_xy_image_{0}'.format(ch.replace('/', ''))
-            self._save_logic.save_data(image_data,
-                                       filepath=filepath,
-                                       timestamp=timestamp,
-                                       parameters=parameters,
-                                       filelabel=filelabel,
-                                       fmt='%.6e',
-                                       delimiter='\t',
-                                       plotfig=figs[ch])
+            data_storage = TextDataStorage(root_dir=self.module_default_data_dir,
+                                           column_formats='.15e')
+
+            ds.save_data(image_data,
+                         timestamp=timestamp,
+                         metadata=parameters,
+                         nametag=filelabel,
+                         column_headers='Image (columns is X, rows is Y)')
 
         # prepare the full raw data in an OrderedDict:
         data = OrderedDict()
@@ -936,13 +943,11 @@ class ConfocalLogic(LogicBase):
 
         # Save the raw data to file
         filelabel = 'confocal_xy_data'
-        self._save_logic.save_data(data,
-                                   filepath=filepath,
-                                   timestamp=timestamp,
-                                   parameters=parameters,
-                                   filelabel=filelabel,
-                                   fmt='%.6e',
-                                   delimiter='\t')
+        ds.save_data(data,
+                     timestamp=timestamp,
+                     metadata=parameters,
+                     nametag=filelabel,
+                     column_headers='Image (columns is X, rows is Y)')
 
         self.log.debug('Confocal Image saved.')
         self.signal_xy_data_saved.emit()
@@ -974,6 +979,8 @@ class ConfocalLogic(LogicBase):
         self.signal_save_started.emit()
         filepath = self._save_logic.get_path_for_module('Confocal')
         timestamp = datetime.datetime.now()
+
+        ds = TextDataStorage(root_dir=self.module_default_data_dir)
         # Prepare the metadata parameters (common to both saved files):
         parameters = OrderedDict()
 
@@ -1116,7 +1123,7 @@ class ConfocalLogic(LogicBase):
         y_prefix = axes_prefix[y_prefix_count]
 
         # Use qudi style
-        plt.style.use(self._save_logic.mpl_qd_style)
+        #plt.style.use(self._save_logic.mpl_qd_style)
 
         # Create figure
         fig, ax = plt.subplots()
@@ -1261,3 +1268,4 @@ class ConfocalLogic(LogicBase):
             self._change_position('history')
             self.signal_change_position.emit('history')
             self.signal_history_event.emit()
+

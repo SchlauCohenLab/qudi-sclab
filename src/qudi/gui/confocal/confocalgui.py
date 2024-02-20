@@ -24,16 +24,16 @@ import numpy as np
 import os
 import pyqtgraph as pg
 import time
+from typing import Union, Tuple
+from functools import partial
+from PySide2 import QtCore, QtGui, QtWidgets
 
-from core.connector import Connector
-from core.configoption import ConfigOption
-from core.statusvariable import StatusVar
-from qtwidgets.scan_plotwidget import ScanImageItem
-from gui.guibase import GUIBase
-from gui.guiutils import ColorBar
-from gui.colordefs import ColorScaleInferno
-from gui.colordefs import QudiPalettePale as palette
-from gui.fitsettings import FitParametersWidget
+import qudi.util.uic as uic
+from qudi.core.connector import Connector
+from qudi.core.statusvariable import StatusVar
+from qudi.core.configoption import ConfigOption
+from qudi.core.module import GuiBase
+
 from qtpy import QtCore
 from qtpy import QtGui
 from qtpy import QtWidgets
@@ -107,7 +107,7 @@ class SaveDialog(QtWidgets.QDialog):
         self.hbox.addSpacerItem(QtWidgets.QSpacerItem(50, 0))
         self.setLayout(self.hbox)
 
-class ConfocalGui(GUIBase):
+class ConfocalGui(GuiBase):
     """ Main Confocal Class for xy and depth scans.
     """
 

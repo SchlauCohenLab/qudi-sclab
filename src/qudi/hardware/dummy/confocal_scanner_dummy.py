@@ -22,13 +22,12 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 import numpy as np
 import time
 
-from core.module import Base
-from core.connector import Connector
-from core.configoption import ConfigOption
-from interface.confocal_scanner_interface import ConfocalScannerInterface
+from qudi.core.configoption import ConfigOption
+from qudi.util.mutex import Mutex
+from qudi.interface.scanner_interface import ScannerInterface
 
 
-class ConfocalScannerDummy(Base, ConfocalScannerInterface):
+class ConfocalScannerDummy(ScannerInterface):
     """ Dummy confocal scanner. Produces a picture with several gaussian spots.
 
     Example config for copy-paste:
@@ -40,14 +39,12 @@ class ConfocalScannerDummy(Base, ConfocalScannerInterface):
 
     """
 
-    # connectors
-    fitlogic = Connector(interface='FitLogic')
-
     # config
     _clock_frequency = ConfigOption('clock_frequency', 100, missing='warn')
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._mutex = Mutex()
 
         # Internal parameters
         self._line_length = None
@@ -60,8 +57,6 @@ class ConfocalScannerDummy(Base, ConfocalScannerInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-
-        self._fit_logic = self.fitlogic()
 
         # put randomly distributed NVs in the scanner, first the x,y scan
         self._points = np.empty([self._num_points, 7])
