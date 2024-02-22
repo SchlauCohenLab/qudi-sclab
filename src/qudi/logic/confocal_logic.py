@@ -115,7 +115,7 @@ class ConfocalHistoryEntry(QtCore.QObject):
         confocal._scanning_device.tilt_variable_ay = self.tilt_slope_y
         confocal._scanning_device.tilt_reference_x = self.tilt_reference_x
         confocal._scanning_device.tilt_reference_y = self.tilt_reference_y
-        confocal._scanning_device.tiltcorrection = self.tilt_correction
+        confocal._scanning_device.tilt_correction = self.tilt_correction
 
         confocal.initialize_image()
         try:
@@ -151,7 +151,7 @@ class ConfocalHistoryEntry(QtCore.QObject):
         self.xy_scan_continuable = confocal._xyscan_continuable
         self.depth_scan_continuable = confocal._zscan_continuable
         self.scan_counter = confocal._scan_counter
-        self.tilt_correction = confocal._scanning_device.tiltcorrection
+        self.tilt_correction = confocal._scanning_device.tilt_correction
         self.tilt_slope_x = confocal._scanning_device.tilt_variable_ax
         self.tilt_slope_y = confocal._scanning_device.tilt_variable_ay
         self.tilt_reference_x = confocal._scanning_device.tilt_reference_x
@@ -241,7 +241,7 @@ class ConfocalLogic(LogicBase):
     """
 
     # declare connectors
-    confocalscanner1 = Connector(interface='ConfocalScannerInterface')
+    confocalscanner1 = Connector(interface='ScannerInterface')
     #savelogic = Connector(interface='SaveLogic')
 
     # status vars
@@ -1236,7 +1236,7 @@ class ConfocalLogic(LogicBase):
 
             @param bool enabled: whether we want to use tilt correction
         """
-        self._scanning_device.tiltcorrection = enabled
+        self._scanning_device.tilt_correction = enabled
         self._scanning_device.tilt_reference_x = self._scanning_device.get_scanner_position()[0]
         self._scanning_device.tilt_reference_y = self._scanning_device.get_scanner_position()[1]
         self.signal_tilt_correction_active.emit(enabled)
@@ -1250,7 +1250,7 @@ class ConfocalLogic(LogicBase):
             self.signal_xy_image_updated.emit()
             self.signal_depth_image_updated.emit()
             self.signal_tilt_correction_update.emit()
-            self.signal_tilt_correction_active.emit(self._scanning_device.tiltcorrection)
+            self.signal_tilt_correction_active.emit(self._scanning_device.tilt_correction)
             self._change_position('history')
             self.signal_change_position.emit('history')
             self.signal_history_event.emit()
@@ -1264,7 +1264,7 @@ class ConfocalLogic(LogicBase):
             self.signal_xy_image_updated.emit()
             self.signal_depth_image_updated.emit()
             self.signal_tilt_correction_update.emit()
-            self.signal_tilt_correction_active.emit(self._scanning_device.tiltcorrection)
+            self.signal_tilt_correction_active.emit(self._scanning_device.tilt_correction)
             self._change_position('history')
             self.signal_change_position.emit('history')
             self.signal_history_event.emit()

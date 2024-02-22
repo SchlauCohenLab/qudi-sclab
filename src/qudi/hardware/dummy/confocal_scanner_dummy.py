@@ -58,6 +58,12 @@ class ConfocalScannerDummy(ScannerInterface):
         """ Initialisation performed during activation of the module.
         """
 
+        self.tilt_variable_ax = 1
+        self.tilt_variable_ay = 1
+        self.tilt_reference_x = 0
+        self.tilt_reference_y = 0
+        self.tilt_correction = 0
+
         # put randomly distributed NVs in the scanner, first the x,y scan
         self._points = np.empty([self._num_points, 7])
         # amplitude

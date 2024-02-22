@@ -47,11 +47,13 @@ with open('README.md', 'r') as file:
 # 6. Make sure your license tag matches the LICENSE (and maybe LICENSE.LESSER) file distributed
 #    with your package (default: GNU Lesser General Public License v3)
 setup(
-    name='qudi-addon-template',  # Choose a custom name
+    name='qudi-sm2p',  # Choose a custom name
     version=version,  # Automatically deduced from "VERSION" file (see above)
     packages=find_namespace_packages(where='src'),  # This should be enough for 95% of the use-cases
     package_dir={'': 'src'},  # same
-    package_data={'': []},  # include data files
+    package_data={'qudi': ['default.cfg'],
+                  'qudi.gui': ['*.ui', '*/*.ui'],
+                  },  # include data files
     description='A template package for qudi addons.',  # Meaningful short(!) description
     long_description=long_description,  # Detailed description is taken from "README.md" file
     long_description_content_type='text/markdown',  # Content type of "README.md" file

@@ -24,6 +24,7 @@ import numpy as np
 import os
 import pyqtgraph as pg
 import time
+import math
 from typing import Union, Tuple
 from functools import partial
 from PySide2 import QtCore, QtGui, QtWidgets
@@ -33,12 +34,214 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import GuiBase
+from qudi.util.colordefs import ColorScaleInferno
+from qudi.util.colordefs import QudiPalettePale as palette
+from .scan_plotwidget import ScanImageItem
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 from qtpy import QtCore
 from qtpy import QtGui
 from qtpy import QtWidgets
 from qtpy import uic
 
+class FitParametersWidget(QtWidgets.QWidget):
+    """ A widget that manages the parameters for a fit. """
+
+    def __init__(self, parameters):
+        """ Definition, configuration and initialisation of the optimizer settings GUI. Adds a row
+            with the value, min, max and vary for each variable in parameters.
+            @param parameters Parameters: lmfit parameters collection to be displayed here
+        """
+        super().__init__()
+
+        self.parameters = parameters
+
+        # create labels and layout
+        self._layout = QtWidgets.QGridLayout(self)
+        self.useLabel = QtWidgets.QLabel('Edit?')
+        self.valueLabel = QtWidgets.QLabel('Value')
+        self.minimumLabel = QtWidgets.QLabel('Minimum')
+        self.maximumLabel = QtWidgets.QLabel('Maximum')
+        self.exprLabel = QtWidgets.QLabel('Expression')
+        self.varyLabel = QtWidgets.QLabel('Vary?')
+
+        # add labels to layout
+        self._layout.addWidget(self.useLabel, 0, 0)
+        self._layout.addWidget(self.valueLabel, 0, 2)
+        self._layout.addWidget(self.minimumLabel, 0, 3)
+        self._layout.addWidget(self.maximumLabel, 0, 4)
+        self._layout.addWidget(self.exprLabel, 0, 5)
+        self._layout.addWidget(self.varyLabel, 0, 6)
+
+        # create all parameter fields and add to layout
+        self.widgets = {}
+        self.paramUseSettings = {}
+        n = 2
+        for name, param in parameters.items():
+            self.paramUseSettings[name] = False
+            self.widgets[name + '_use'] = useCheckbox = QtWidgets.QCheckBox()
+            self.widgets[name + '_label'] = parameterNameLabel = QtWidgets.QLabel(str(name))
+            self.widgets[name + '_value'] = valueSpinbox = ScienDSpinBox()
+            self.widgets[name + '_min'] = minimumSpinbox = ScienDSpinBox()
+            self.widgets[name + '_max'] = maximumSpinbox = ScienDSpinBox()
+            self.widgets[name + '_expr'] = expressionLineEdit = QtWidgets.QLineEdit()
+            self.widgets[name + '_vary'] = varyCheckbox = QtWidgets.QCheckBox()
+            valueSpinbox.setMaximum(np.inf)
+            valueSpinbox.setMinimum(-np.inf)
+            valueSpinbox.setMinimumSize(QtCore.QSize(60, 16777215))
+            minimumSpinbox.setMaximum(np.inf)
+            minimumSpinbox.setMinimum(-np.inf)
+            minimumSpinbox.setMinimumSize(QtCore.QSize(60, 16777215))
+            maximumSpinbox.setMaximum(np.inf)
+            maximumSpinbox.setMinimum(-np.inf)
+            maximumSpinbox.setMinimumSize(QtCore.QSize(60, 16777215))
+            if param.value is not None and not math.isnan(param.value):
+                useCheckbox.setChecked(self.paramUseSettings[name])
+                valueSpinbox.setValue(param.value)
+                minimumSpinbox.setValue(param.min)
+                maximumSpinbox.setValue(param.max)
+                expressionLineEdit.setText(param.expr)
+                varyCheckbox.setChecked(param.vary)
+
+            self._layout.addWidget(useCheckbox, n, 0)
+            self._layout.addWidget(parameterNameLabel, n, 1)
+            self._layout.addWidget(valueSpinbox, n, 2)
+            self._layout.addWidget(minimumSpinbox, n, 3)
+            self._layout.addWidget(maximumSpinbox, n, 4)
+            self._layout.addWidget(expressionLineEdit, n, 5)
+            self._layout.addWidget(varyCheckbox, n, 6)
+            n += 1
+
+        # space at the bottom of the list
+        self._layout.setRowStretch(n, 1)
+
+    def applyFitParameters(self):
+        """ Updates the fit parameters with the new values from the widget.
+
+            @return tuple(Parameters, dict): new lmfit Parameters and a dict indicating their use
+        """
+        for name, param in self.parameters.items():
+            self.paramUseSettings[name] = self.widgets[name + '_use'].isChecked()
+            param.value = self.widgets[name + '_value'].value()
+            param.min = self.widgets[name + '_min'].value()
+            param.max = self.widgets[name + '_max'].value()
+            param.expr = str(self.widgets[name + '_expr'].displayText())
+            param.vary = self.widgets[name + '_vary'].isChecked()
+        return self.parameters, self.paramUseSettings
+
+    def resetFitParameters(self):
+        """ Resets the parameters in the widget to the stored values.
+
+            @return tuple(Parameters, dict): old Parameters and dict indicating their use
+        """
+        for name, param in self.parameters.items():
+            if param.value is not None and not math.isnan(param.value):
+                self.widgets[name + '_use'].setChecked(self.paramUseSettings[name])
+                self.widgets[name + '_value'].setValue(param.value)
+                self.widgets[name + '_min'].setValue(param.min)
+                self.widgets[name + '_max'].setValue(param.max)
+                self.widgets[name + '_expr'].setText(param.expr)
+                self.widgets[name + '_vary'].setChecked(param.vary)
+        return self.parameters, self.paramUseSettings
+
+    def updateFitParameters(self, parameters):
+        """ Update all the parameter values.
+            @param parameters Parameters: lmfit Parameters to update the widget with
+        """
+        for name, param in parameters.items():
+            v = param.value
+            if name in self.parameters and v is not None and not math.isnan(v):
+                self.widgets[name + '_value'].setValue(v)
+                self.widgets[name + '_min'].setValue(param.min)
+                self.widgets[name + '_max'].setValue(param.max)
+                self.widgets[name + '_expr'].setText(param.expr)
+                self.widgets[name + '_vary'].setChecked(param.vary)
+                self.parameters[name] = param
+        return self.parameters, self.paramUseSettings
+
+class ColorBar(pg.GraphicsObject):
+    """ Create a ColorBar according to a previously defined color map.
+
+    @param object pyqtgraph.ColorMap cmap: a defined colormap
+    @param float width: width of the colorbar in x direction, starting from
+                        the origin.
+    @param numpy.array ticks: optional, definition of the relative ticks marks
+    """
+
+    def __init__(self, cmap, width, cb_min, cb_max):
+
+        pg.GraphicsObject.__init__(self)
+
+        # handle the passed arguments:
+        self.stops, self.colors = cmap.getStops('float')
+        self.stops = (self.stops - self.stops.min())/self.stops.ptp()
+        self.width = width
+
+        # Constructs an empty picture which can be altered by QPainter
+        # commands. The picture is a serialization of painter commands to an IO
+        # device in a platform-independent format.
+        self.pic = pg.QtGui.QPicture()
+
+        self.refresh_colorbar(cb_min, cb_max)
+
+    def refresh_colorbar(self, cb_min, cb_max, width = None, height = None, xMin = None, yMin = None):
+        """ Refresh the appearance of the colorbar for a changed count range.
+
+        @param float cb_min: The minimal count value should be passed here.
+        @param float cb_max: The maximal count value should be passed here.
+        @param float width: optional, with that you can change the width of the
+                            colorbar in the display.
+        """
+
+        if width is None:
+            width = self.width
+        else:
+            self.width = width
+
+#       FIXME: Until now, if you want to refresh the colorbar, a new QPainter
+#              object has been created, but I think that it is not necassary.
+#              I have to figure out how to use the created object properly.
+        p = pg.QtGui.QPainter(self.pic)
+        p.drawRect(self.boundingRect())
+        p.setPen(pg.mkPen('k'))
+        grad = pg.QtGui.QLinearGradient(width/2.0, cb_min*1.0, width/2.0, cb_max*1.0)
+        for stop, color in zip(self.stops, self.colors):
+            grad.setColorAt(1.0 - stop, pg.QtGui.QColor(*[255*c for c in color]))
+        p.setBrush(pg.QtGui.QBrush(grad))
+        if xMin is None:
+            p.drawRect(pg.QtCore.QRectF(0, cb_min, width, cb_max-cb_min))
+        else:
+            # If this picture whants to be set in a plot, which is going to be
+            # saved:
+            p.drawRect(pg.QtCore.QRectF(xMin, yMin, width, height))
+        p.end()
+
+        vb = self.getViewBox()
+        # check whether a viewbox is already created for this object. If yes,
+        # then it should be adjusted according to the full screen.
+        if vb is not None:
+            vb.updateAutoRange()
+            vb.enableAutoRange()
+
+    def paint(self, p, *args):
+        """ Overwrite the paint method from GraphicsObject.
+
+        @param object p: a pyqtgraph.QtGui.QPainter object, which is used to
+                         set the color of the pen.
+
+        Since this colorbar object is in the end a GraphicsObject, it will
+        drop an implementation error, since you have to write your own paint
+        function for the created GraphicsObject.
+        """
+        # paint colorbar
+        p.drawPicture(0, 0, self.pic)
+
+    def boundingRect(self):
+        """ Overwrite the paint method from GraphicsObject.
+
+        Get the position, width and hight of the displayed object.
+        """
+        return pg.QtCore.QRectF(self.pic.boundingRect())
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
     """ Create the Mainwindow based on the corresponding *.ui file. """
@@ -65,7 +268,6 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         self._doubleclicked = True
         self.sigDoubleClick.emit()
 
-
 class ConfocalSettingDialog(QtWidgets.QDialog):
     """ Create the SettingsDialog window, based on the corresponding *.ui file."""
 
@@ -77,7 +279,6 @@ class ConfocalSettingDialog(QtWidgets.QDialog):
         # Load it
         super(ConfocalSettingDialog, self).__init__()
         uic.loadUi(ui_file, self)
-
 
 class OptimizerSettingDialog(QtWidgets.QDialog):
     """ User configurable settings for the optimizer embedded in cofocal gui"""
@@ -113,7 +314,6 @@ class ConfocalGui(GuiBase):
 
     # declare connectors
     confocallogic1 = Connector(interface='ConfocalLogic')
-    savelogic = Connector(interface='SaveLogic')
     optimizerlogic1 = Connector(interface='OptimizerLogic')
 
     # config options for gui
@@ -145,7 +345,6 @@ class ConfocalGui(GuiBase):
 
         # Getting an access to all connectors:
         self._scanning_logic = self.confocallogic1()
-        self._save_logic = self.savelogic()
         self._optimizer_logic = self.optimizerlogic1()
 
         self._hardware_state = True
@@ -1615,9 +1814,8 @@ class ConfocalGui(GuiBase):
         self._scanning_logic.save_xy_data(colorscale_range=cb_range, percentile_range=pcile_range, block=False)
 
         # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
-        filepath = self._save_logic.get_path_for_module(module_name='Confocal')
         filename = os.path.join(
-            filepath,
+            self.module_default_data_dir,
             time.strftime('%Y%m%d-%H%M-%S_confocal_xy_scan_raw_pixel_image'))
         if self._sd.save_purePNG_checkBox.isChecked():
             self.xy_image.save(filename + '_raw.png')
@@ -1647,9 +1845,8 @@ class ConfocalGui(GuiBase):
         self._scanning_logic.save_depth_data(colorscale_range=cb_range, percentile_range=pcile_range, block=False)
 
         # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
-        filepath = self._save_logic.get_path_for_module(module_name='Confocal')
         filename = os.path.join(
-            filepath,
+            self.module_default_data_dir,
             time.strftime('%Y%m%d-%H%M-%S_confocal_depth_scan_raw_pixel_image'))
         if self._sd.save_purePNG_checkBox.isChecked():
             self.depth_image.save(filename + '_raw.png')
