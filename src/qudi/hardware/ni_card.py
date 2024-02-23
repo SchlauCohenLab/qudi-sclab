@@ -163,7 +163,7 @@ class NICard(SlowCounterInterface, ScannerInterface):
 
         self.reset_hardware()
 
-    # =================== SlowCounterInterface Commands ========================
+    # =================== Slow Counter Interface ========================
 
     def get_constraints(self):
         """ Get hardware limits of NI device.
@@ -649,9 +649,8 @@ class NICard(SlowCounterInterface, ScannerInterface):
             return -1
         return 0
 
-    # ================ End SlowCounterInterface Commands =======================
+    # ================ Confocal Scanner Interface =======================
 
-    # ================ ConfocalScannerInterface Commands =======================
     def reset_hardware(self):
         """ Resets the NI hardware, so the connection is lost and other
             programs can access it.
