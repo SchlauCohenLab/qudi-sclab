@@ -29,6 +29,7 @@ from PySide2.QtGui import QGuiApplication
 
 from qudi.interface.scanner_interface import ScannerInterface, ScanConstraints, \
     ScannerAxis, ScannerChannel, ScanData
+from qudi.interface.slow_counter_interface import SlowCounterInterface, CountingMode, SlowCounterConstraints
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
 from qudi.util.mutex import RecursiveMutex, Mutex
@@ -36,10 +37,9 @@ from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
 
 
-
-class NiScanningProbeInterfuse(ScannerInterface):
+class NiXSeriesScanner(ScannerInterface):
     """
-    This interfuse combines modules of a National Instrument device to make up a scanning probe hardware.
+    This interfuse combines modules of a National Instrument device to make up a scanning hardware.
     One module for software timed analog output (NIXSeriesAnalogOutput) to position e.g. a scanner to a specific
     position and a hardware timed module for in and output (NIXSeriesFiniteSamplingIO) to realize 1D/2D scans.
 
@@ -869,6 +869,91 @@ class NiScanningProbeInterfuse(ScannerInterface):
 
         except:
             self.log.exception("")
+
+    # ================ Slow counter interface ===================
+            
+    def get_constraints(self):
+        """ Get hardware limits the device
+
+        @return SlowCounterConstraints: constraints class for slow counter
+
+        FIXME: ask hardware for limits when module is loaded
+        """
+        constraints = SlowCounterConstraints()
+        constraints.max_detectors = 1
+        constraints.min_count_frequency = self._frequency_ranges[0]
+        constraints.max_count_frequency = self._frequency_ranges[1]
+        constraints.counting_mode = [CountingMode.CONTINUOUS]
+        return constraints
+
+    def set_up_clock(self, clock_frequency=None, clock_channel=None):
+        """ Set the frequency of the counter by configuring the hardware clock
+
+        @param (float) clock_frequency: if defined, this sets the frequency of the clock
+        @param (string) clock_channel: if defined, this is the physical channel of the clock
+        @return int: error code (0:OK, -1:error)
+
+        TODO: Should the logic know about the different clock channels ?
+        """
+        pass
+
+    def set_up_counter(self,
+                       counter_channels=None,
+                       sources=None,
+                       clock_channel=None,
+                       counter_buffer=None):
+        """ Configures the actual counter with a given clock.
+
+        @param list(str) counter_channels: optional, physical channel of the counter
+        @param list(str) sources: optional, physical channel where the photons
+                                   photons are to count from
+        @param str clock_channel: optional, specifies the clock channel for the
+                                  counter
+        @param int counter_buffer: optional, a buffer of specified integer
+                                   length, where in each bin the count numbers
+                                   are saved.
+
+        @return int: error code (0:OK, -1:error)
+
+        There need to be exactly the same number sof sources and counter channels and
+        they need to be given in the same order.
+        All counter channels share the same clock.
+        """
+        pass
+
+    def get_counter(self, samples=None):
+        """ Returns the current counts per second of the counter.
+
+        @param int samples: if defined, number of samples to read in one go
+
+        @return numpy.array((n, uint32)): the measured quantity of each channel
+        """
+        pass
+
+    def get_counter_channels(self):
+        """ Returns the list of counter channel names.
+
+        @return list(str): channel names
+
+        Most methods calling this might just care about the number of channels, though.
+        """
+        pass
+
+    def close_counter(self):
+        """ Closes the counter and cleans up afterwards.
+
+        @return int: error code (0:OK, -1:error)
+        """
+        pass
+
+    def close_clock(self):
+        """ Closes the clock and cleans up afterwards.
+
+        @return int: error code (0:OK, -1:error)
+
+        TODO: This method is very hardware specific, it should be deprecated
+        """
+        pass
 
 
 class RawDataContainer:
