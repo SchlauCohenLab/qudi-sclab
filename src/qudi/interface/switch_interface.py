@@ -18,7 +18,7 @@ class SwitchInterface(Base):
 
     @property
     @abstractmethod
-    def name(self) -> str:
+    def name(self):
         """ Name of the hardware as string.
 
         @return str: The name of the hardware
@@ -27,7 +27,7 @@ class SwitchInterface(Base):
 
     @property
     @abstractmethod
-    def available_states(self) -> Dict[str, Tuple[str, ...]]:
+    def available_states(self):
         """ Names of the states as a dict of tuples.
 
         The keys contain the names for each of the switches. The values are tuples of strings
@@ -38,7 +38,7 @@ class SwitchInterface(Base):
         pass
 
     @abstractmethod
-    def get_state(self, switch: str) -> str:
+    def get_state(self, switch):
         """ Query state of single switch by name
 
         @param str switch: name of the switch to query the state for
@@ -47,7 +47,7 @@ class SwitchInterface(Base):
         pass
 
     @abstractmethod
-    def set_state(self, switch: str, state: str) -> None:
+    def set_state(self, switch, state):
         """ Query state of single switch by name
 
         @param str switch: name of the switch to change
@@ -58,7 +58,7 @@ class SwitchInterface(Base):
     # Non-abstract default implementations below
 
     @property
-    def number_of_switches(self) -> int:
+    def number_of_switches(self):
         """ Number of switches provided by the hardware.
 
         @return int: number of switches
@@ -66,7 +66,7 @@ class SwitchInterface(Base):
         return len(self.available_states)
 
     @property
-    def switch_names(self) -> Tuple[str, ...]:
+    def switch_names(self):
         """ Names of all available switches as tuple.
 
         @return str[]: Tuple of strings of available switch names.
@@ -74,7 +74,7 @@ class SwitchInterface(Base):
         return tuple(self.available_states)
 
     @property
-    def states(self) -> Dict[str, str]:
+    def states(self):
         """ The current states the hardware is in as state dictionary with switch names as keys and
         state names as values.
 
@@ -83,7 +83,7 @@ class SwitchInterface(Base):
         return {switch: self.get_state(switch) for switch in self.available_states}
 
     @states.setter
-    def states(self, state_dict: Mapping[str, str]) -> None:
+    def states(self, state_dict):
         """ The setter for the states of the hardware.
 
         The states of the system can be set by specifying a dict that has the switch names as keys
@@ -96,8 +96,7 @@ class SwitchInterface(Base):
             self.set_state(switch, state)
 
     @staticmethod
-    def _chk_refine_available_switches(switch_dict: Dict[str, Sequence[str]]
-                                       ) -> Dict[str, Tuple[str, ...]]:
+    def _chk_refine_available_switches(switch_dict):
         """ Perform some general checking of the configured available switches and their possible
         states. When implementing a hardware module, you can overwrite this method to include
         custom checks, but make sure to call this implementation first via super().

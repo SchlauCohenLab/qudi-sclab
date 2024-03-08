@@ -5,7 +5,7 @@ __all__ = ['TimeTagger']
 import time
 
 from qudi.interface.fast_counter_interface import FastCounterInterface
-from qudi.interface.slow_counter_interface import SlowCounterInterface, SlowCounterConstraints
+from qudi.interface.slow_counter_interface import SlowCounterInterface, SlowCounterConstraints, CountingMode
 from qudi.core.statusvariable import StatusVar
 import TimeTagger as tt
 import numpy as np
