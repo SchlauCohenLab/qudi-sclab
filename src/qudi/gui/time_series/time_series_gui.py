@@ -54,7 +54,7 @@ class TimeSeriesGui(GuiBase):
     """
 
     # declare connectors
-    _time_series_logic_con = Connector(interface='TimeSeriesReaderLogic')
+    _time_series_logic_con = Connector(interface='TimeSeriesLogic')
 
     # declare ConfigOptions
     _use_antialias = ConfigOption('use_antialias', default=True, constructor=lambda x: bool(x))

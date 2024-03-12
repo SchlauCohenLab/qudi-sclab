@@ -25,6 +25,7 @@ __all__ = ['MotorGui']
 from enum import IntEnum
 from PySide2 import QtWidgets, QtCore, QtGui
 import os
+from functools import partial
 
 import qudi.util.uic as uic
 from qudi.core.connector import Connector
@@ -33,80 +34,24 @@ from qudi.core.module import GuiBase
 from qudi.core.configoption import ConfigOption
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
-class AxisControlWidget(QtWidgets.QWidget):
-    """ Create the Mainwindow based on the corresponding *.ui file. """
+from qudi.gui.motor.axis_control_dockwidget import AxisDockWidget
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.main_layout = QtWidgets.QGridLayout()
-        self.setLayout(self.main_layout)
-
-        self.movement_type_layout = QtWidgets.QHBoxLayout()
-        self.move_abs_radio_box = QtWidgets.QRadioButton('Absolute')
-        self.move_rel_radio_box = QtWidgets.QRadioButton('Relative')
-        self.movement_type_layout.addWidget(self.move_abs_radio_box)
-        self.movement_type_layout.addWidget(self.move_rel_radio_box)
-
-        move_spinbox = ScienDSpinBox()
-        move_spinbox.setObjectName('{0}_forward_scienDSpinBox'.format(ax_name))
-        move_spinbox.setRange(*axis.frequency_range)
-        move_spinbox.setValue(max(axis.min_frequency, axis.max_frequency / 100))
-        move_spinbox.setSuffix('Hz')
-        move_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        move_spinbox.setMinimumSize(75, 0)
-        move_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                      QtWidgets.QSizePolicy.Preferred)
-        self.main_layout.addWidget(QtWidgets.QRadioButton(""))
-
-    def mouseDoubleClickEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton:
-            self.action_utility_zoom.setChecked(not self.action_utility_zoom.isChecked())
-            event.accept()
-        else:
-            super().mouseDoubleClickEvent(event)
-        return
 
 class MainWindow(QtWidgets.QMainWindow):
     """Main Window for the SwitchGui module"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setWindowTitle('qudi: <INSERT HARDWARE NAME>')
+        #self.setWindowTitle('qudi: <INSERT HARDWARE NAME>')
         # Create main layout and central widget
-        self.main_layout = QtWidgets.QGridLayout()
         widget = QtWidgets.QWidget()
-        widget.setLayout(self.main_layout)
+        layout = QtWidgets.QVBoxLayout()
+        widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        widget.setLayout(layout)
         self.setCentralWidget(widget)
+        self.setDockNestingEnabled(True)
 
-        # Create QActions and menu bar
-        menu_bar = QtWidgets.QMenuBar()
-        self.setMenuBar(menu_bar)
-
-        menu = menu_bar.addMenu('Menu')
-        self.action_close = QtWidgets.QAction('Close Window')
-        self.action_close.setCheckable(False)
-        self.action_close.setIcon(QtGui.QIcon('artwork/icons/application-exit.svg'))
-        self.addAction(self.action_close)
-        menu.addAction(self.action_close)
-
-        for action in self.switch_view_actions:
-            action.setCheckable(True)
-            self.switch_view_action_group.addAction(action)
-            menu.addAction(action)
-        self.action_view_highlight_state = QtWidgets.QAction('highlight state labels')
-        self.action_view_highlight_state.setCheckable(True)
-        menu.addAction(self.action_view_highlight_state)
-        self.action_view_alt_toggle_style = QtWidgets.QAction('alternative toggle switch')
-        self.action_view_alt_toggle_style.setCheckable(True)
-        menu.addAction(self.action_view_alt_toggle_style)
-
-        # close window upon triggering close action
-        self.action_close.triggered.connect(self.close)
         return
-
-    def add_motor_widget(self, axis):
-
 
 class MotorGui(GuiBase):
     """
@@ -124,10 +69,9 @@ class MotorGui(GuiBase):
     # declare connectors
     motor_logic = Connector(interface='MotorLogic')
 
-    # declare config options
-    _switch_row_num_max = ConfigOption(name='switch_row_num_max', default=None)
-
     # declare status variables
+    _axes_displacement = ConfigOption(name='axes_displacement', default={})
+    _abs_displacement = ConfigOption(name='abs_displacement', default={})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -138,191 +82,108 @@ class MotorGui(GuiBase):
         """ Create all UI objects and show the window.
         """
         self._mw = MainWindow()
-        try:
-            self._mw.switch_view_actions[self._switch_style].setChecked(True)
-        except IndexError:
-            self._mw.switch_view_actions[0].setChecked(True)
-            self._switch_style = SwitchStyle(0)
-        self._mw.action_view_highlight_state.setChecked(
-            self._state_colorscheme == StateColorScheme.HIGHLIGHT
-        )
-        self._mw.action_view_alt_toggle_style.setChecked(self._alt_toggle_switch_style)
-        self._mw.setWindowTitle(f'qudi: {self.switchlogic().device_name.title()}')
+        self._constraints = self.motor_logic().constraints
 
-        self._populate_switches()
+        self.axes_widgets = {}
+        for axis in self.motor_logic().axes:
+            axis_widget = AxisDockWidget(axis)
+            axis_widget.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
+            self.axes_widgets[axis] = axis_widget
+            self._mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, axis_widget)
+            self.init_axis_widgets(axis)
 
-        self.sigSwitchChanged.connect(self.switchlogic().set_state, QtCore.Qt.QueuedConnection)
-        self._mw.action_periodic_state_check.toggled.connect(
-            self.switchlogic().toggle_watchdog, QtCore.Qt.QueuedConnection
-        )
-        self._mw.switch_view_action_group.triggered.connect(self._update_switch_appearance)
-        self._mw.action_view_highlight_state.triggered.connect(self._update_state_colorscheme)
-        self._mw.action_view_alt_toggle_style.triggered.connect(self._update_toggle_switch_style)
-        self.switchlogic().sigWatchdogToggled.connect(
-            self._watchdog_updated, QtCore.Qt.QueuedConnection
-        )
-        self.switchlogic().sigSwitchesChanged.connect(
-            self._switches_updated, QtCore.Qt.QueuedConnection
-        )
+        wg_list = [wg for wg in self.axes_widgets.values()]
+        for i in range(len(wg_list)-1):
+            self._mw.tabifyDockWidget(wg_list[i], wg_list[i+1])
 
-        self._restore_window_geometry(self._mw)
-
-        self._watchdog_updated(self.switchlogic().watchdog_active)
-        self._switches_updated(self.switchlogic().states)
-        self._update_state_colorscheme()
         self.show()
 
-        self._update_pos_timer = QtCore.QTimer()
-        self._update_pos_timer.setSingleShot(False)
-        self._update_pos_timer.timeout.connect(self._update_position, QtCore.Qt.QueuedConnection)
+    def show(self):
+        """
+        Show the GUI
+        """
+        self._mw.show()
 
     def on_deactivate(self):
         """ Hide window empty the GUI and disconnect signals
         """
-        self.switchlogic().sigSwitchesChanged.disconnect(self._switches_updated)
-        self.switchlogic().sigWatchdogToggled.disconnect(self._watchdog_updated)
-        self._mw.action_view_highlight_state.triggered.disconnect()
-        self._mw.action_view_alt_toggle_style.triggered.disconnect()
-        self._mw.switch_view_action_group.triggered.disconnect()
-        self._mw.action_periodic_state_check.toggled.disconnect()
-        self.sigSwitchChanged.disconnect()
-
-        self._save_window_geometry(self._mw)
-        self._delete_switches()
         self._mw.close()
 
-    def show(self):
-        """ Make sure that the window is visible and at the top.
-        """
-        self._mw.show()
+    def init_axis_widgets(self, axis):
 
-    def _populate_switches(self):
-        """ Dynamically build the gui
-        """
-        self._widgets = dict()
-        for ii, (switch, states) in enumerate(self.switchlogic().available_states.items()):
-            label = self._get_switch_label(switch)
+        self.axes_widgets[axis].axis_label.setText("{}-Axis".format(axis.upper()))
 
-            if self._switch_row_num_max is None:
-                grid_pos = [ii, 0]
-            else:
-                grid_pos = [int(ii % self._switch_row_num_max), int(ii / self._switch_row_num_max) * 2]
+        if axis not in self._abs_displacement.keys():
+            self._abs_displacement[axis] = True
+        self._update_radio_btn(axis, self._abs_displacement[axis])
 
-            if len(states) > 2 or self._switch_style == SwitchStyle.RADIO_BUTTON:
-                switch_widget = SwitchRadioButtonWidget(switch_states=states)
-                self._widgets[switch] = (label, switch_widget)
-                self._mw.main_layout.addWidget(self._widgets[switch][0], grid_pos[0], grid_pos[1])
-                self._mw.main_layout.addWidget(self._widgets[switch][1], grid_pos[0], grid_pos[1] + 1)
-                switch_widget.sigStateChanged.connect(self.__get_state_update_func(switch))
-            elif self._switch_style == SwitchStyle.TOGGLE_SWITCH:
-                if self._alt_toggle_switch_style:
-                    switch_widget = ToggleSwitchWidget(switch_states=states,
-                                                       thumb_track_ratio=1.35,
-                                                       scale_text_in_switch=True,
-                                                       text_inside_switch=False)
-                else:
-                    switch_widget = ToggleSwitchWidget(switch_states=states,
-                                                       thumb_track_ratio=0.9,
-                                                       scale_text_in_switch=True,
-                                                       text_inside_switch=True)
-                self._widgets[switch] = (label, switch_widget)
-                switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                            QtWidgets.QSizePolicy.Preferred)
-                self._mw.main_layout.addWidget(self._widgets[switch][0], grid_pos[0], grid_pos[1])
-                self._mw.main_layout.addWidget(switch_widget, grid_pos[0], grid_pos[1] + 1)
-                self._mw.main_layout.setColumnStretch(grid_pos[1], 0)
-                self._mw.main_layout.setColumnStretch(grid_pos[1] + 1, 1)
-                switch_widget.sigStateChanged.connect(self.__get_state_update_func(switch))
+        if axis not in self._axes_displacement.keys():
+            self._axes_displacement[axis] = 0
+        self.axes_widgets[axis].displacement_sb.setValue(self._axes_displacement[axis])
+        self.axes_widgets[axis].displacement_sb.setSuffix(self._constraints[axis]['unit'])
 
-    @staticmethod
-    def _get_switch_label(switch):
-        """ Helper function to create a QLabel for a single switch.
+        self.axes_widgets[axis].position_value.setText("{}{}".format(self.motor_logic().get_position([axis])[axis],
+                                                                     self._constraints[axis]['unit']))
 
-        @param str switch: The name of the switch to create the label for
-        @return QWidget: QLabel with switch name
-        """
-        label = QtWidgets.QLabel(f'{switch}:')
-        font = label.font()
-        font.setBold(True)
-        font.setPointSize(11)
-        label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        label.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
-        return label
+        self.axes_widgets[axis].abs_displacement.clicked.connect(lambda: self._update_radio_btn(axis, True))
+        self.axes_widgets[axis].rel_displacement.clicked.connect(lambda: self._update_radio_btn(axis, False))
+        self.axes_widgets[axis].displacement_sb.editingFinished.connect(lambda: self._update_displacement_value(axis))
+        self.axes_widgets[axis].home_btn.clicked.connect(lambda: self._home_axis(axis))
+        self.axes_widgets[axis].move_btn.clicked.connect(lambda: self._move_axis(axis))
 
-    def _delete_switches(self):
-        """ Delete all the buttons from the main layout. """
-        self._widgets.clear()
-        while True:
-            item = self._mw.main_layout.takeAt(0)
-            if item is None:
-                break
-            widget = item.widget()
-            try:
-                widget.sigStateChanged.disconnect()
-            except AttributeError:
-                pass
-            widget.setParent(None)
-            widget.deleteLater()
+        self._update_status_timer = QtCore.QTimer()
+        self._update_status_timer.setSingleShot(False)
+        self._update_status_timer.timeout.connect(self._update_axis_status, QtCore.Qt.QueuedConnection)
+        self._update_status_timer.start(100)
 
-    @QtCore.Slot(dict)
-    def _switches_updated(self, states):
-        """ Helper function to update the GUI on a change of the states in the logic.
-        This function is connected to the signal coming from the switchlogic signaling a change in states.
-        @param dict states: The state dict of the form {"switch": "state"}
-        @return: None
-        """
-        for switch, state in states.items():
-            self._widgets[switch][1].set_state(state)
+        self._update_position_timer = QtCore.QTimer()
+        self._update_position_timer.setSingleShot(False)
+        self._update_position_timer.timeout.connect(self._update_position_value, QtCore.Qt.QueuedConnection)
+        self._update_position_timer.start(100)
 
-    @QtCore.Slot(bool)
-    def _watchdog_updated(self, enabled):
-        """ Update the menu action accordingly if the watchdog has been (de-)activated.
+        self.axes_widgets[axis].scan_btn.clicked.connect(self.motor_logic().start_scan(axis))
 
-        @param bool enabled: Watchdog active (True) or inactive (False)
-        """
-        if enabled != self._mw.action_periodic_state_check.isChecked():
-            self._mw.action_periodic_state_check.blockSignals(True)
-            self._mw.action_periodic_state_check.setChecked(enabled)
-            self._mw.action_periodic_state_check.blockSignals(False)
+    def _update_radio_btn(self, axis, absolute):
 
-    def _update_switch_appearance(self, action):
-        index = self._mw.switch_view_actions.index(action)
-        if index != self._switch_style:
-            self._switch_style = SwitchStyle(index)
-            self._mw.close()
-            self._delete_switches()
-            self._populate_switches()
-            self._switches_updated(self.switchlogic().states)
-            self._update_state_colorscheme()
-            self._mw.show()
-
-    def _update_state_colorscheme(self):
-        self._state_colorscheme = StateColorScheme(self._mw.action_view_highlight_state.isChecked())
-        if self._state_colorscheme is StateColorScheme.HIGHLIGHT:
-            checked_color = self._mw.palette().highlight().color()
-            unchecked_color = None
+        position = self.motor_logic().get_position([axis])[axis]
+        if absolute:
+            self.axes_widgets[axis].rel_displacement.setChecked(False)
+            self.axes_widgets[axis].abs_displacement.setChecked(True)
+            self._abs_displacement[axis] = True
+            self.axes_widgets[axis].displacement_sb.setRange(self._constraints[axis]['pos_min'],
+                                                             self._constraints[axis]['pos_max'])
         else:
-            checked_color = None
-            unchecked_color = None
-        for widget in self._widgets.values():
-            widget[1].set_state_colors(unchecked_color, checked_color)
-            widget[1].update()
+            self.axes_widgets[axis].rel_displacement.setChecked(True)
+            self.axes_widgets[axis].abs_displacement.setChecked(False)
+            self._abs_displacement[axis] = False
+            self.axes_widgets[axis].displacement_sb.setRange(self._constraints[axis]['pos_min'] - position,
+                                                             self._constraints[axis]['pos_max'] - position)
 
-    @QtCore.Slot(bool)
-    def _update_toggle_switch_style(self, checked):
-        if self._alt_toggle_switch_style != checked:
-            self._alt_toggle_switch_style = checked
-            if self._switch_style == SwitchStyle.TOGGLE_SWITCH:
-                self._mw.close()
-                self._delete_switches()
-                self._populate_switches()
-                self._switches_updated(self.switchlogic().states)
-                self._update_state_colorscheme()
-                self._mw.show()
+    def _update_axis_status(self):
 
-    def __get_state_update_func(self, switch):
-        def update_func(state):
-            self.sigSwitchChanged.emit(switch, state)
+        axes_status = self.motor_logic().status
+        for axis, status in axes_status.items():
+            self.axes_widgets[axis].axis_status.setText("{}".format(status))
 
-        return update_func
+    def _update_position_value(self):
+
+        axes_position = self.motor_logic().position
+        for axis, pos in axes_position.items():
+            self.axes_widgets[axis].position_value.setText("{}{}".format(pos, self._constraints[axis]['unit']))
+
+    def _update_displacement_value(self, axis):
+
+        self._axes_displacement[axis] = self.axes_widgets[axis].displacement_sb.value()
+
+    def _home_axis(self, axis):
+
+        self.motor_logic().home([axis])
+
+    def _move_axis(self, axis):
+
+        displacement = self.axes_widgets[axis].displacement_sb.value()
+        self._axes_displacement[axis] = displacement
+        if self._abs_displacement[axis]:
+            self.motor_logic().move_abs({axis: displacement})
+        else:
+            self.motor_logic().move_rel({axis: displacement})
