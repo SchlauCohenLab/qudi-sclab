@@ -267,6 +267,7 @@ class PoiManagerGui(GuiBase):
     # declare signals
     sigTrackPeriodChanged = QtCore.Signal(float)
     sigPoiThresholdChanged = QtCore.Signal(float)
+    sigPoiMassThresholdChanged = QtCore.Signal(float)
     sigPoiDiameterChanged = QtCore.Signal(float)
     sigPoiNameChanged = QtCore.Signal(str)
     sigPoiNameTagChanged = QtCore.Signal(str)
@@ -318,6 +319,8 @@ class PoiManagerGui(GuiBase):
         self._update_poi_nametag(self._poi_manager_logic().poi_nametag)
         # Initialize Auto POI threshold
         self._update_poi_threshold(self._poi_manager_logic().poi_threshold)
+        # Initialize Auto POI mass threshold
+        self._update_poi_mass_threshold(self._poi_manager_logic().poi_mass_threshold)
         # Initialize Auto POI diameter
         self._update_poi_diameter(self._poi_manager_logic().poi_diameter)
 
@@ -435,6 +438,8 @@ class PoiManagerGui(GuiBase):
             self.update_refocus_state, QtCore.Qt.QueuedConnection)
         self._poi_manager_logic().sigThresholdUpdated.connect(
             self._update_poi_threshold, QtCore.Qt.QueuedConnection)
+        self._poi_manager_logic().sigMassThresholdUpdated.connect(
+            self._update_poi_mass_threshold, QtCore.Qt.QueuedConnection)
         self._poi_manager_logic().sigDiameterUpdated.connect(
             self._update_poi_diameter, QtCore.Qt.QueuedConnection)
         return
@@ -482,6 +487,8 @@ class PoiManagerGui(GuiBase):
             self._poi_manager_logic().set_refocus_period, QtCore.Qt.QueuedConnection)
         self.sigPoiThresholdChanged.connect(
             self._poi_manager_logic().set_poi_threshold)
+        self.sigPoiMassThresholdChanged.connect(
+            self._poi_manager_logic().set_poi_mass_threshold)
         self.sigPoiDiameterChanged.connect(
             self._poi_manager_logic().set_poi_diameter)
         self.sigRoiNameChanged.connect(
@@ -509,6 +516,7 @@ class PoiManagerGui(GuiBase):
         self._mw.track_poi_Action.triggered.disconnect()
         self.sigTrackPeriodChanged.disconnect()
         self.sigPoiThresholdChanged.disconnect()
+        self.sigPoiMassThresholdChanged.disconnect()
         self.sigPoiDiameterChanged.disconnect()
         self.sigRoiNameChanged.disconnect()
         self.sigPoiNameChanged.disconnect()
@@ -521,6 +529,7 @@ class PoiManagerGui(GuiBase):
     def __connect_internal_signals(self):
         self._mw.track_period_SpinBox.editingFinished.connect(self.track_period_changed)
         self._mw.poi_threshold_doubleSpinBox.editingFinished.connect(self.poi_threshold_changed)
+        self._mw.poi_mass_threshold_doubleSpinBox.editingFinished.connect(self.poi_mass_threshold_changed)
         self._mw.poi_diameter_doubleSpinBox.editingFinished.connect(self.poi_diameter_changed)
         self._mw.roi_name_LineEdit.editingFinished.connect(self.roi_name_changed)
         self._mw.poi_name_LineEdit.returnPressed.connect(self.poi_name_changed)
@@ -725,7 +734,7 @@ class PoiManagerGui(GuiBase):
                                                     ScaledFloat(active_poi_pos[2])))
 
         if name in self._markers:
-            self._markers[name].set_radius(self._poi_manager_logic().optimise_xy_size / np.sqrt(2))
+            self._markers[name].set_radius(self._poi_manager_logic().optimise_xy_size / 4)
             self._markers[name].select()
         return
 
@@ -737,6 +746,11 @@ class PoiManagerGui(GuiBase):
     @QtCore.Slot()
     def poi_threshold_changed(self):
         self.sigPoiThresholdChanged.emit(self._mw.poi_threshold_doubleSpinBox.value())
+        return
+
+    @QtCore.Slot()
+    def poi_mass_threshold_changed(self):
+        self.sigPoiMassThresholdChanged.emit(self._mw.poi_mass_threshold_doubleSpinBox.value())
         return
 
     @QtCore.Slot()
@@ -827,8 +841,12 @@ class PoiManagerGui(GuiBase):
         self._mw.poi_threshold_doubleSpinBox.setValue(threshold)
         return
 
+    def _update_poi_mass_threshold(self, mass_threshold):
+        self._mw.poi_mass_threshold_doubleSpinBox.setValue(mass_threshold)
+        return
+
     def _update_poi_diameter(self, diameter):
-        self._mw.poi_diameter_doubleSpinBox.setValue(diameter)
+        self._mw.poi_diameter_doubleSpinBox.setValue(int(diameter))
         return
 
     def _update_roi_history(self, history=None):
@@ -910,7 +928,7 @@ class PoiManagerGui(GuiBase):
             marker = PoiMarker(position=position[:2],
                                view_widget=self._mw.roi_image.plot_widget,
                                poi_name=name,
-                               radius=self._poi_manager_logic().optimise_xy_size / np.sqrt(2),
+                               radius=self._poi_manager_logic().optimise_xy_size / 4,
                                movable=False)
             # Add to the scan image widget
             marker.add_to_view_widget()
