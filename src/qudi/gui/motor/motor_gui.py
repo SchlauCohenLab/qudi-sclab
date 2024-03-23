@@ -29,6 +29,7 @@ from functools import partial
 
 import qudi.util.uic as uic
 from qudi.core.connector import Connector
+from qudi.util.units import ScaledFloat
 from qudi.core.statusvariable import StatusVar
 from qudi.core.module import GuiBase
 from qudi.core.configoption import ConfigOption
@@ -46,11 +47,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Create main layout and central widget
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
-        widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         widget.setLayout(layout)
         self.setCentralWidget(widget)
         self.setDockNestingEnabled(True)
-
+        self.setMinimumSize(300, 200)
         return
 
 class MotorGui(GuiBase):
@@ -122,7 +123,7 @@ class MotorGui(GuiBase):
         self.axes_widgets[axis].displacement_sb.setValue(self._axes_displacement[axis])
         self.axes_widgets[axis].displacement_sb.setSuffix(self._constraints[axis]['unit'])
 
-        self.axes_widgets[axis].position_value.setText("{}{}".format(self.motor_logic().get_position([axis])[axis],
+        self.axes_widgets[axis].position_value.setText("{:.2r}{}".format(ScaledFloat(self.motor_logic().get_position([axis])[axis]),
                                                                      self._constraints[axis]['unit']))
 
         self.axes_widgets[axis].abs_displacement.clicked.connect(lambda: self._update_radio_btn(axis, True))
@@ -139,9 +140,9 @@ class MotorGui(GuiBase):
         self._update_position_timer = QtCore.QTimer()
         self._update_position_timer.setSingleShot(False)
         self._update_position_timer.timeout.connect(self._update_position_value, QtCore.Qt.QueuedConnection)
-        self._update_position_timer.start(100)
+        self._update_position_timer.start(10)
 
-        self.axes_widgets[axis].scan_btn.clicked.connect(self.motor_logic().start_scan(axis))
+        #self.axes_widgets[axis].scan_btn.clicked.connect(lambda: self.motor_logic().start_scan(axis))
 
     def _update_radio_btn(self, axis, absolute):
 
@@ -156,6 +157,7 @@ class MotorGui(GuiBase):
             self.axes_widgets[axis].rel_displacement.setChecked(True)
             self.axes_widgets[axis].abs_displacement.setChecked(False)
             self._abs_displacement[axis] = False
+
             self.axes_widgets[axis].displacement_sb.setRange(self._constraints[axis]['pos_min'] - position,
                                                              self._constraints[axis]['pos_max'] - position)
 
@@ -163,13 +165,16 @@ class MotorGui(GuiBase):
 
         axes_status = self.motor_logic().status
         for axis, status in axes_status.items():
-            self.axes_widgets[axis].axis_status.setText("{}".format(status))
+            if status == 0:
+                self.axes_widgets[axis].axis_status.setText("Idle")
+            if status == -1:
+                self.axes_widgets[axis].axis_status.setText("Error")
 
     def _update_position_value(self):
 
         axes_position = self.motor_logic().position
         for axis, pos in axes_position.items():
-            self.axes_widgets[axis].position_value.setText("{}{}".format(pos, self._constraints[axis]['unit']))
+            self.axes_widgets[axis].position_value.setText("{:.2r}{}".format(ScaledFloat(pos), self._constraints[axis]['unit']))
 
     def _update_displacement_value(self, axis):
 

@@ -5,7 +5,11 @@ __all__ = ['MotorInterface']
 from abc import abstractmethod
 
 from qudi.core.module import Base
+from enum import Enum
 
+class AxisStatus(Enum):
+    OK = 0
+    ERROR = -1
 
 class MotorInterface(Base):
     """ This is the Interface class to define the controls for the simple
