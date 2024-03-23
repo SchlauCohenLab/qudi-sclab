@@ -25,11 +25,11 @@ from PySide2 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
-from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
-from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
+from qudi.interface.scanner_interface import ScannerInterface, ScanData
+from qudi.interface.scanner_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
 
-class ScanningProbeDummy(ScanningProbeInterface):
+class ScannerDummy(ScannerInterface):
     """
     Dummy scanning probe microscope. Produces a picture with several gaussian spots.
 

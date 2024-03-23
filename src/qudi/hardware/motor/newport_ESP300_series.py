@@ -48,23 +48,24 @@ class NewportMotor(MotorInterface):
 
     newport_conex:
         module.Class: 'motor.motor_newport_conex.MotorNewportConex'
-        axis:
-            x1:
-                port: 'COM5'
-                adress: '01'
-                unit: 'm'
-            x2:
-                port: 'COM7'
-                adress: '01'
-                unit: 'm'
-            y1:
-                port: 'COM8'
-                adress: '01'
-                unit: 'm'
-            y2:
-                port: 'COM9'
-                adress: '01'
-                unit: 'm'
+        options:
+            axis:
+                x1:
+                    port: 'COM5'
+                    adress: '01'
+                    unit: 'm'
+                x2:
+                    port: 'COM7'
+                    adress: '01'
+                    unit: 'm'
+                y1:
+                    port: 'COM8'
+                    adress: '01'
+                    unit: 'm'
+                y2:
+                    port: 'COM9'
+                    adress: '01'
+                    unit: 'm'
 
     """
 
@@ -82,21 +83,16 @@ class NewportMotor(MotorInterface):
         self._devices = {}
         for label, configs in self._axis.items():
             device = self._rm.open_resource(configs["port"])
-            device.baud_rate = 921600
+            device.baud_rate = 19200
             device.read_termination = "\r\n"
 
             self._devices[label] = device
-
-            self.write(label, 'OR')
-
-        return 0
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
         for label, configs in self._axis.items():
             self._devices[label].close()
-        return 0
 
     def query(self, axis_label, command):
         """
@@ -165,7 +161,7 @@ class NewportMotor(MotorInterface):
         for label, pos in param_dict.items():
             command = "PR{}".format(param_dict[label] * 1e3)
             self.write(label, command)
-            pos_dict[label] = float(self.query(label, "TH")) * 1e-3
+            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
 
         return pos_dict
 
@@ -180,7 +176,7 @@ class NewportMotor(MotorInterface):
         for label, pos in param_dict.items():
             command = "PA{}".format(param_dict[label] * 1e3)
             self.write(label, command)
-            pos_dict[label] = float(self.query(label, "TH")) * 1e-3
+            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
 
         return pos_dict
 
@@ -242,7 +238,7 @@ class NewportMotor(MotorInterface):
         pos_dict = {}
         for label in param_list:
             self.write(label, "OR")
-            pos_dict[label] = float(self.query(label, "TH")) * 1e-3
+            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
 
         return pos_dict
 

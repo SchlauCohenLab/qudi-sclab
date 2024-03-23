@@ -1,184 +1,577 @@
 # -*- coding: utf-8 -*-
 
+"""
+This module contains the Qudi interface file for scanning probe hardware.
+
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+
+This file is part of qudi.
+
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+"""
+
 __all__ = ['ScannerInterface']
 
+import datetime
+import numpy as np
 from abc import abstractmethod
-
 from qudi.core.module import Base
 
 
 class ScannerInterface(Base):
-    """ This is the Interface class to define the controls for a scanner device
+    """ This is the Interface class to define the controls for a scanning probe device
 
-    A scanner device is a hardware that can move on up to 4 multiple axis with repeatability in position and measure
-    something at each point of a line in the parameter space trajectory.
-    The key idea of this interface is that the hardware handle the timing of the acquisition to remove as much delay as
-    possible.
-
-    A typical example of such hardware in the lab is the use with the NI card to move scanner/mirrors and record the
-    luminescence at each position to build, line by line, a raster scan.
-
-    ---
-    This code, while trying to be compatible with any number of axis, is as of now only used with 3 or 4 axis.
-    Using less will raise errors in confocal_logic.
-
+    A scanner device is hardware that can move multiple axes.
     """
 
     @abstractmethod
-    def reset_hardware(self):
-        """ Resets the hardware, so the connection is lost and other programs can access it.
+    def get_constraints(self):
+        """ Get hardware constraints/limitations.
 
-        @return int: error code (0:OK, -1:error)
+        @return dict: scanner constraints
         """
         pass
 
     @abstractmethod
-    def get_position_range(self):
-        """ Returns the physical range of the scanner.
+    def reset(self):
+        """ Hard reset of the hardware.
+        """
+        pass
 
-        @return float [N][2]: array of N ranges with an array containing lower and upper limit, preferably in SI unit.
+    @abstractmethod
+    def configure_scan(self, settings):
+        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+
+        @param ScanSettings settings: ScanSettings instance holding all parameters # TODO update me!
+
+        @return (bool, ScanSettings): Failure indicator (fail=True),
+                                      altered ScanSettings instance (same as "settings")
+        """
+        pass
+
+    @abstractmethod
+    def move_absolute(self, position, velocity=None, blocking=False):
+        """ Move the scanning probe to an absolute position as fast as possible or with a defined
+        velocity.
+
+        Log error and return current target position if something fails or a scan is in progress.
+
+        @param bool blocking: If True this call returns only after the final position is reached.
+        """
+        pass
+
+    @abstractmethod
+    def move_relative(self, distance, velocity=None, blocking=False):
+        """ Move the scanning probe by a relative distance from the current target position as fast
+        as possible or with a defined velocity.
+
+        Log error and return current target position if something fails or a 1D/2D scan is in
+        progress.
+
+        @param bool blocking: If True this call returns only after the final position is reached.
 
         """
         pass
 
     @abstractmethod
-    def set_position_range(self, myrange=None):
-        """ Sets the physical range of the scanner.
+    def get_target(self):
+        """ Get the current target position of the scanner hardware
+        (i.e. the "theoretical" position).
 
-        Deprecated : This range should not be accessible by logic. TODO: Discuss and remove from interface ?
-
-        @param float [N][2] myrange: array of N ranges with an array containing lower and upper limit
-
-        @return int: error code (0:OK, -1:error)
+        @return dict: current target position per axis.
         """
         pass
 
     @abstractmethod
-    def set_voltage_range(self, myrange=None):
-        """ Sets the voltage range of the NI Card.
+    def get_position(self):
+        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        For the same target this value can fluctuate according to the scanners positioning accuracy.
 
-        Deprecated : This range should not be accessible by logic. TODO: Discuss and remove from interface ?
+        For scanning devices that do not have position feedback sensors, simply return the target
+        position (see also: ScanningProbeInterface.get_target).
 
-        @param float [2] myrange: array containing lower and upper limit
-
-        @return int: error code (0:OK, -1:error)
+        @return dict: current position per axis.
         """
         pass
 
     @abstractmethod
-    def get_scanner_axes(self):
-        """ Find out how many axes the scanning device is using for confocal and their names.
+    def start_scan(self):
+        """
 
-        @return list(str): list of axis names
-
-        Example:
-          For 3D confocal microscopy in cartesian coordinates, ['x', 'y', 'z'] is a sensible value.
-          For 2D, ['x', 'y'] would be typical.
-          You could build a turntable microscope with ['r', 'phi', 'z'].
-          Most callers of this function will only care about the number of axes, though.
-
-          On error, return an empty list.
+        @return (bool): Failure indicator (fail=True)
         """
         pass
 
     @abstractmethod
-    def get_scanner_count_channels(self):
-        """ Returns the list of channels that are recorded while scanning an image.
+    def stop_scan(self):
+        """
 
-        @return list(str): channel names
-
-        Most methods calling this might just care about the number of channels.
+        @return bool: Failure indicator (fail=True)
         """
         pass
 
     @abstractmethod
-    def set_up_scanner_clock(self, clock_frequency=None, clock_channel=None):
-        """ Configures the hardware clock of the hardware that controls the acquisition timing.
+    def get_scan_data(self):
+        """
 
-        @param float clock_frequency: if defined, this sets the frequency of the clock
-        @param str clock_channel: if defined, this is the physical channel of the clock
-
-        TODO: the clock_channel argument is unused and should not be known by the logic.
-        TODO: Discuss and remove from interface ?
-
-        @return int: error code (0:OK, -1:error)
+        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         """
         pass
 
     @abstractmethod
-    def set_up_scanner(self,
-                       counter_channels=None,
-                       sources=None,
-                       clock_channel=None,
-                       scanner_ao_channels=None):
-        """ Configures the actual scanner with a given clock.
+    def emergency_stop(self):
+        """
 
-        @param str counter_channels: if defined, these are the physical conting devices
-        @param str sources: if defined, these are the physical channels where
-                                  the photons are to count from
-        @param str clock_channel: if defined, this specifies the clock for the
-                                  counter
-        @param str scanner_ao_channels: if defined, this specifies the analoque
-                                        output channels
-
-        @return int: error code (0:OK, -1:error)
-
-        TODO: Again, should the multiple clocks controlled by logic be in this interface ?
+        @return:
         """
         pass
 
-    @abstractmethod
-    def scanner_set_position(self, x=None, y=None, z=None, a=None):
-        """ Move stage to x, y, z, a (where a is the fourth channel).
 
-        @param float x: position in x-direction (in axis unit)
-        @param float y: position in y-direction (in axis unit)
-        @param float z: position in z-direction (in axis unit)
-        @param float a: position in a-direction (in axis unit)
+class ScanData:
+    """
+    Object representing all data associated to a SPM measurement.
+    """
 
-        @return int: error code (0:OK, -1:error)
-
-        If a value is not set or set to None, the actual value is implied.
+    def __init__(self, channels, scan_axes, scan_range, scan_resolution, scan_frequency,
+                 target_at_start=None, position_feedback_axes=None):
         """
-        pass
 
-    @abstractmethod
-    def get_scanner_position(self):
-        """ Get the current position of the scanner hardware.
-
-        @return tuple(float): current position as a tuple. Ex : (x, y, z, a).
+        @param ScannerChannel[] channels: ScannerChannel objects involved in this scan
+        @param ScannerAxis[] scan_axes: ScannerAxis instances involved in the scan
+        @param float[][2] scan_range: inclusive range for each scan axis
+        @param int[] scan_resolution: planned number of points for each scan axis
+        @param float scan_frequency: Scan pixel frequency of the fast axis
+        @param dict target_at_start: optional, save scanner target (all axes) at beginning of scan
+        @param ScannerAxis[] position_feedback_axes: optional, axes for which to acquire position
+                                                     feedback during the scan.
         """
-        pass
+        # Sanity checking
+        if not (0 < len(scan_axes) <= 2):
+            raise ValueError('ScanData can only be used for 1D or 2D scans.')
+        if len(channels) < 1:
+            raise ValueError('At least one data channel must be specified for a valid scan.')
+        if len(scan_axes) != len(scan_range):
+            raise ValueError('Parameters "scan_axes" and "scan_range" must have same len. Given '
+                             '{0:d} and {1:d}, respectively.'.format(len(scan_axes),
+                                                                     len(scan_range)))
+        if len(scan_axes) != len(scan_resolution):
+            raise ValueError('Parameters "scan_axes" and "scan_resolution" must have same len. '
+                             'Given {0:d} and {1:d}, respectively.'.format(len(scan_axes),
+                                                                           len(scan_resolution)))
+        if not all(isinstance(ax, ScannerAxis) for ax in scan_axes):
+            raise TypeError(
+                'Parameter "scan_axes" must be iterable containing only ScannerAxis objects')
+        if not all(len(ax_range) == 2 for ax_range in scan_range):
+            raise TypeError(
+                'Parameter "scan_range" must be iterable containing only value pairs (len=2).')
+        if not all(isinstance(res, int) for res in scan_resolution):
+            raise TypeError(
+                'Parameter "scan_resolution" must be iterable containing only integers.')
+        if not all(isinstance(ch, ScannerChannel) for ch in channels):
+            raise TypeError(
+                'Parameter "channels" must be iterable containing only ScannerChannel objects.')
+        if not all(np.issubdtype(ch.dtype, np.floating) for ch in channels):
+            raise TypeError('channel dtypes must be either builtin or numpy floating types')
 
-    @abstractmethod
-    def scan_line(self, line_path=None, pixel_clock=False):
-        """ Scans a line and returns the counts on that line.
+        self._scan_axes = tuple(scan_axes)
+        self._scan_range = tuple((float(start), float(stop)) for (start, stop) in scan_range)
+        self._scan_resolution = tuple(int(res) for res in scan_resolution)
+        self._scan_frequency = float(scan_frequency)
+        self._channels = tuple(channels)
 
-        @param float[k][n] line_path: array k of n-part tuples defining the pixel positions
-        @param bool pixel_clock: whether we need to output a pixel clock for this line
+        if position_feedback_axes is None:
+            self._position_feedback_axes = None
+        else:
+            self._position_feedback_axes = tuple(position_feedback_axes)
 
-        TODO: Give a detail explanation of pixel_clock argument, how it is used in practice and why it is necessary.
+        self._timestamp = None
+        self._data = None
+        self._position_data = None
+        self._target_at_start = target_at_start
+        # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
+        return
 
-        @return float[k][m]: the photon counts per second for k pixels with m channels
+    def __copy__(self):
+        new_inst = ScanData(channels=self._channels,
+                            scan_axes=self._scan_axes,
+                            scan_range=self._scan_range,
+                            scan_resolution=self._scan_resolution,
+                            scan_frequency=self._scan_frequency,
+                            position_feedback_axes=self._position_feedback_axes)
+        new_inst._timestamp = self._timestamp
+        if self._data is not None:
+            new_inst._data = self._data.copy()
+        if self._position_data is not None:
+            new_inst._position_data = self._position_data.copy()
+        return new_inst
+
+    def __deepcopy__(self, memodict={}):
+        return self.copy()
+
+    def __eq__(self, other):
+        if not isinstance(other, ScanData):
+            raise NotImplemented
+
+        attrs = ('_timestamp', '_scan_frequency', '_scan_axes', '_scan_range', '_scan_resolution',
+                 '_channels', '_position_feedback_axes', '_data', '_position_data', '_timestamp')
+        return all(getattr(self, a) == getattr(other, a) for a in attrs)
+
+    @property
+    def scan_axes(self):
+        return tuple(ax.name for ax in self._scan_axes)
+
+    @property
+    def scan_range(self):
+        return self._scan_range
+
+    @property
+    def scan_resolution(self):
+        return self._scan_resolution
+
+    @property
+    def scan_frequency(self):
+        return self._scan_frequency
+
+    @property
+    def scanner_target_at_start(self):
+        return self._target_at_start
+
+    @scanner_target_at_start.setter
+    def scanner_target_at_start(self, target_dict):
+        self._target_at_start = target_dict
+
+    @property
+    def channels(self):
+        return tuple(ch.name for ch in self._channels)
+
+    @property
+    def channel_units(self):
+        return {ch.name: ch.unit for ch in self._channels}
+
+    @property
+    def axes_units(self):
+        units = {ax.name: ax.unit for ax in self._scan_axes}
+        if self.has_position_feedback:
+            units.update({ax.name: ax.unit for ax in self._position_feedback_axes})
+        return units
+
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, data_dict):
+        assert tuple(data_dict.keys()) == self.channels
+        assert all([val.shape == self.scan_resolution for val in data_dict.values()])
+        self._data = data_dict
+
+    @property
+    def position_data(self):
+        return self._position_data
+
+    @property
+    def has_position_feedback(self):
+        return bool(self._position_feedback_axes)
+
+    @property
+    def scan_dimension(self):
+        return len(self._scan_axes)
+
+    def new_scan(self, timestamp=None):
         """
-        pass
 
-    @abstractmethod
-    def close_scanner(self):
-        """ Closes the scanner and cleans up afterwards.
-
-        @return int: error code (0:OK, -1:error)
-
-        TODO: Give a detail explanation how it is used in practice and why it is necessary.
+        @param timestamp:
         """
-        pass
+        if timestamp is None:
+            self._timestamp = datetime.datetime.now()
+        elif isinstance(timestamp, datetime.datetime):
+            self._timestamp = timestamp
+        else:
+            raise TypeError('Optional parameter "timestamp" must be datetime.datetime object.')
 
-    @abstractmethod
-    def close_scanner_clock(self, power=0):
-        """ Closes the clock and cleans up afterwards.
+        if self.has_position_feedback:
+            self._position_data = {ax.name: np.full(self._scan_resolution, np.nan) for ax in
+                                   self._position_feedback_axes}
+        else:
+            self._position_data = None
+        self._data = {
+            ch.name: np.full(self._scan_resolution, np.nan, dtype=ch.dtype) for ch in self._channels
+        }
+        return
 
-        @return int: error code (0:OK, -1:error)
+    def copy(self):
+        new_inst = ScanData(channels=self._channels,
+                            scan_axes=self._scan_axes,
+                            scan_range=self._scan_range,
+                            scan_resolution=self._scan_resolution,
+                            scan_frequency=self._scan_frequency,
+                            position_feedback_axes=self._position_feedback_axes,
+                            target_at_start=self._target_at_start)
+        new_inst._timestamp = self._timestamp
+        if self._data is not None:
+            new_inst._data = {ch: arr.copy() for ch, arr in self._data.items()}
+        if self._position_data is not None:
+            new_inst._position_data = {ch: arr.copy() for ch, arr in self._position_data.items()}
+        return new_inst
 
-        TODO: Give a detail explanation how it is used in practice and why it is necessary.
+    def to_dict(self):
+        dict_repr = {
+            'scan_axes': tuple(ax.to_dict() for ax in self._scan_axes),
+            'scan_range': self._scan_range,
+            'scan_resolution': self._scan_resolution,
+            'scan_frequency': self._scan_frequency,
+            'channels': tuple(ch.to_dict() for ch in self._channels),
+            'position_feedback_axes': None if self._position_feedback_axes is None else tuple(
+                ax.to_dict() for ax in self._position_feedback_axes),
+            'timestamp': None if self._timestamp is None else self._timestamp.timestamp(),
+            'data': None if self._data is None else {ch: d.copy() for ch, d in self._data.items()},
+            'position_data': None if self._position_data is None else {ax: d.copy() for ax, d in
+                                                                       self._position_data.items()}
+        }
+        return dict_repr
+
+    @classmethod
+    def from_dict(cls, dict_repr):
+        scan_axes = tuple(ScannerAxis.from_dict(ax) for ax in dict_repr['scan_axes'])
+        if dict_repr['position_feedback_axes'] is None:
+            position_feedback_axes = None
+        else:
+            position_feedback_axes = tuple(
+                ScannerAxis.from_dict(ax) for ax in dict_repr['position_feedback_axes']
+            )
+        channels = tuple(ScannerChannel.from_dict(ch) for ch in dict_repr['channels'])
+        new_inst = cls(channels=channels,
+                       scan_axes=scan_axes,
+                       scan_range=dict_repr['scan_range'],
+                       scan_resolution=dict_repr['scan_resolution'],
+                       scan_frequency=dict_repr['scan_frequency'],
+                       position_feedback_axes=position_feedback_axes)
+        new_inst._data = dict_repr['data']
+        new_inst._position_data = dict_repr['position_data']
+        if dict_repr['timestamp'] is not None:
+            new_inst._timestamp = datetime.datetime.fromtimestamp(dict_repr['timestamp'])
+        return new_inst
+
+
+class ScannerChannel:
+    """
+    """
+    def __init__(self, name, unit='', dtype=np.float64):
+        if not isinstance(name, str):
+            raise TypeError('Parameter "name" must be of type str.')
+        if len(name) < 1:
+            raise ValueError('Parameter "name" must be non-empty str.')
+        if not isinstance(unit, str):
+            raise TypeError('Parameter "unit" must be of type str.')
+        # FIXME: Implement proper numpy type checking
+        if not isinstance(dtype, type):
+            raise TypeError('Parameter "dtype" must be numpy-compatible type.')
+        self._name = name
+        self._unit = unit
+        self._dtype = dtype
+
+    def __eq__(self, other):
+        if not isinstance(other, ScannerChannel):
+            raise NotImplemented
+        attrs = ('_name', '_unit', '_dtype')
+        return all(getattr(self, a) == getattr(other, a) for a in attrs)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def unit(self):
+        return self._unit
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    def to_dict(self):
+        return {'name': self._name, 'unit': self._unit, 'dtype': self._dtype.__name__}
+
+    @classmethod
+    def from_dict(cls, dict_repr):
+        dict_repr['dtype'] = getattr(np, dict_repr['dtype'])
+        return ScannerChannel(**dict_repr)
+
+
+class ScannerAxis:
+    """
+    """
+
+    def __init__(self, name, unit='', value_range=(-np.inf, np.inf), step_range=(0, np.inf),
+                 resolution_range=(1, np.inf), frequency_range=(0, np.inf)):
+        if not isinstance(name, str):
+            raise TypeError('Parameter "name" must be of type str.')
+        if name == '':
+            raise ValueError('Parameter "name" must be non-empty str.')
+        if not isinstance(unit, str):
+            raise TypeError('Parameter "unit" must be of type str.')
+        if not (len(value_range) == len(step_range) == len(resolution_range) == len(
+                frequency_range) == 2):
+            raise ValueError('Range parameters must be iterables of length 2')
+
+        self._name = name
+        self._unit = unit
+        self._resolution_range = (int(min(resolution_range)), int(max(resolution_range))) #TODO np.inf cannot be casted as an int
+        self._step_range = (float(min(step_range)), float(max(step_range)))
+        self._value_range = (float(min(value_range)), float(max(value_range)))
+        self._frequency_range = (float(min(frequency_range)), float(max(frequency_range)))
+
+    def __eq__(self, other):
+        if not isinstance(other, ScannerAxis):
+            raise NotImplemented
+        attrs = ('_name',
+                 '_unit',
+                 '_resolution_range',
+                 '_step_range',
+                 '_value_range',
+                 '_frequency_range')
+        return all(getattr(self, a) == getattr(other, a) for a in attrs)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def unit(self):
+        return self._unit
+
+    @property
+    def resolution_range(self):
+        return self._resolution_range
+
+    @property
+    def min_resolution(self):
+        return self._resolution_range[0]
+
+    @property
+    def max_resolution(self):
+        return self._resolution_range[1]
+
+    @property
+    def step_range(self):
+        return self._step_range
+
+    @property
+    def min_step(self):
+        return self._step_range[0]
+
+    @property
+    def max_step(self):
+        return self._step_range[1]
+
+    @property
+    def value_range(self):
+        return self._value_range
+
+    @property
+    def min_value(self):
+        return self._value_range[0]
+
+    @property
+    def max_value(self):
+        return self._value_range[1]
+
+    @property
+    def frequency_range(self):
+        return self._frequency_range
+
+    @property
+    def min_frequency(self):
+        return self._frequency_range[0]
+
+    @property
+    def max_frequency(self):
+        return self._frequency_range[1]
+
+    def clip_value(self, value):
+        if value < self.min_value:
+            return self.min_value
+        elif value > self.max_value:
+            return self.max_value
+        return value
+
+    def clip_resolution(self, res):
+        if res < self.min_resolution:
+            return self.min_resolution
+        elif res > self.max_resolution:
+            return self.max_resolution
+        return res
+
+    def clip_frequency(self, freq):
+        if freq < self.min_frequency:
+            return self.min_frequency
+        elif freq > self.max_frequency:
+            return self.max_frequency
+        return freq
+
+    def to_dict(self):
+        dict_repr = {'name': self._name,
+                     'unit': self._unit,
+                     'value_range': self._value_range,
+                     'step_range': self._step_range,
+                     'resolution_range': self._resolution_range,
+                     'frequency_range': self._frequency_range}
+        return dict_repr
+
+    @classmethod
+    def from_dict(cls, dict_repr):
+        return ScannerAxis(**dict_repr)
+
+
+class ScanConstraints:
+    """
+    """
+
+    def __init__(self, axes, channels, backscan_configurable, has_position_feedback,
+                 square_px_only):
         """
-        pass
+        """
+        if not all(isinstance(ax, ScannerAxis) for ax in axes):
+            raise TypeError('Parameter "axes" must be of type ScannerAxis.')
+        if not all(isinstance(ch, ScannerChannel) for ch in channels):
+            raise TypeError('Parameter "channels" must be of type ScannerChannel.')
+        if not isinstance(backscan_configurable, bool):
+            raise TypeError('Parameter "backscan_configurable" must be of type bool.')
+        if not isinstance(has_position_feedback, bool):
+            raise TypeError('Parameter "has_position_feedback" must be of type bool.')
+        if not isinstance(square_px_only, bool):
+            raise TypeError('Parameter "square_px_only" must be of type bool.')
+        self._axes = {ax.name: ax for ax in axes}
+        self._channels = {ch.name: ch for ch in channels}
+        self._backscan_configurable = bool(backscan_configurable)
+        self._has_position_feedback = bool(has_position_feedback)
+        self._square_px_only = bool(square_px_only)
+
+    @property
+    def axes(self):
+        return self._axes.copy()
+
+    @property
+    def channels(self):
+        return self._channels.copy()
+
+    @property
+    def backscan_configurable(self):  # TODO Incorporate in gui/logic toolchain?
+        return self._backscan_configurable
+
+    @property
+    def has_position_feedback(self):  # TODO Incorporate in gui/logic toolchain?
+        return self._has_position_feedback
+
+    @property
+    def square_px_only(self):  # TODO Incorporate in gui/logic toolchain?
+        return self._square_px_only

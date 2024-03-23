@@ -26,7 +26,7 @@ import copy as cp
 from PySide2 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
-from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
+from qudi.logic.scanner_optimize_logic import OptimizerScanSequence
 
 class OptimizerSettingDialog(QtWidgets.QDialog):
     """ User configurable settings for the scanner optimizer logic
