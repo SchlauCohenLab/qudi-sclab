@@ -36,8 +36,9 @@ from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
 
+__all__ = ['NanoDrive']
 
-class NiXSeriesScanner(ScannerInterface):
+class NanoDrive(ScannerInterface):
     """
     This interfuse combines modules of a National Instrument device to make up a scanning hardware.
     One module for software timed analog output (NIXSeriesAnalogOutput) to position e.g. a scanner to a specific
@@ -45,41 +46,7 @@ class NiXSeriesScanner(ScannerInterface):
 
     Example config for copy-paste:
 
-    ni_scanning_probe:
-        module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuse'
-        connect:
-            scan_hardware: 'ni_finite_sampling_io'
-            analog_output: 'ni_ao'
-        options:
-            ni_channel_mapping:
-                x: 'ao0'
-                y: 'ao1'
-                z: 'ao2'
-                APD1: 'PFI8'
-                APD2: 'PFI9'
-                AI0: 'ai0'
-            position_ranges: # in m
-                x: [-100e-6, 100e-6]
-                y: [0, 200e-6]
-                z: [-100e-6, 100e-6]
-            frequency_ranges: #Aka values written/retrieved per second; Check with connected HW for sensible constraints.
-                x: [1, 5000]
-                y: [1, 5000]
-                z: [1, 1000]
-            resolution_ranges:
-                x: [1, 10000]
-                y: [1, 10000]
-                z: [2, 1000]
-            input_channel_units:
-                APD1: 'c/s'
-                APD2: 'c/s'
-                AI0: 'V'
-            backwards_line_resolution: 50 # optional
-            move_velocity: 400e-6 #m/s; This speed is used for scanner movements and avoids jumps from position to position.
     """
-
-    # TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?
-    # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
     _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
@@ -161,7 +128,7 @@ class NiXSeriesScanner(ScannerInterface):
                                             backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
-#
+        #
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
         self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
         self._t_last_move = time.perf_counter()
@@ -329,11 +296,12 @@ class NiXSeriesScanner(ScannerInterface):
         try:
             t_start = time.perf_counter()
             while self.is_move_running:
-                self.log.debug(f"Waiting for move done: {self.is_move_running}, {1e3*(time.perf_counter()-t_start)} ms")
+                self.log.debug(
+                    f"Waiting for move done: {self.is_move_running}, {1e3 * (time.perf_counter() - t_start)} ms")
                 QGuiApplication.processEvents()
                 time.sleep(self._min_step_interval)
 
-            #self.log.debug(f"Move_abs finished after waiting {1e3*(time.perf_counter()-t_start)} ms ")
+            # self.log.debug(f"Move_abs finished after waiting {1e3*(time.perf_counter()-t_start)} ms ")
         except:
             self.log.exception("")
 
@@ -380,7 +348,7 @@ class NiXSeriesScanner(ScannerInterface):
     def start_scan(self):
         try:
 
-            #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
+            # self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
             if self.thread() is not QtCore.QThread.currentThread():
                 QtCore.QMetaObject.invokeMethod(self, '_start_scan',
@@ -410,7 +378,7 @@ class NiXSeriesScanner(ScannerInterface):
 
             with self._thread_lock_data:
                 self._scan_data.new_scan()
-                #self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
+                # self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
                 self._stored_target_pos = self.get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
@@ -426,14 +394,13 @@ class NiXSeriesScanner(ScannerInterface):
             self.module_state.unlock()
             self.log.exception("Starting scan failed: ")
 
-
     def stop_scan(self):
         """
         @return bool: Failure indicator (fail=True)
         # todo: return values as error codes are deprecated
         """
 
-        #self.log.debug("Stopping scan")
+        # self.log.debug("Stopping scan")
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
                                             QtCore.Qt.BlockingQueuedConnection)
@@ -494,8 +461,8 @@ class NiXSeriesScanner(ScannerInterface):
         @return bool: scanning probe is running (True) or not (False)
         """
         # module state used to indicate hw timed scan running
-        #self.log.debug(f"Module in state: {self.module_state()}")
-        #assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
+        # self.log.debug(f"Module in state: {self.module_state()}")
+        # assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
         if self.module_state() == 'locked':
             return True
         else:
@@ -528,7 +495,7 @@ class NiXSeriesScanner(ScannerInterface):
             # Request a minimum of chunk_size samples per loop
             try:
                 samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size) \
-                    if self._ni_finite_sampling_io().samples_in_buffer < chunk_size\
+                    if self._ni_finite_sampling_io().samples_in_buffer < chunk_size \
                     else self._ni_finite_sampling_io().get_buffered_samples()
             except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
                 # after HW stopped
@@ -720,7 +687,6 @@ class NiXSeriesScanner(ScannerInterface):
             with self._thread_lock_cursor:
                 stop_loop = self._abort_cursor_move
 
-
                 target_pos_vec = self._pos_dict_to_vec(self._target_pos)
                 connecting_vec = target_pos_vec - current_pos_vec
                 distance_to_target = np.linalg.norm(connecting_vec)
@@ -735,7 +701,7 @@ class NiXSeriesScanner(ScannerInterface):
                         self.__t_last_follow = time.perf_counter()
 
                     delta_t = t_start - self.__t_last_follow
-                    #self.log.debug(f"Write loop duration: {1e3*(time.perf_counter()-self.__t_last_follow)} ms")
+                    # self.log.debug(f"Write loop duration: {1e3*(time.perf_counter()-self.__t_last_follow)} ms")
                     self.__t_last_follow = t_start
 
                     # Calculate new position to go to
@@ -752,7 +718,7 @@ class NiXSeriesScanner(ScannerInterface):
                                    for ax, pos in new_pos.items()}
 
                     self._ni_ao().setpoints = new_voltage
-                    #self.log.debug(f'Cursor_write_loop move to {new_pos}, Dist= {distance_to_target} '
+                    # self.log.debug(f'Cursor_write_loop move to {new_pos}, Dist= {distance_to_target} '
                     #               f'took {1e3*(time.perf_counter()-t_start)} ms.')
 
                     # Start single-shot timer to call this follow loop again after some wait time
@@ -760,7 +726,7 @@ class NiXSeriesScanner(ScannerInterface):
                     self.__ni_ao_write_timer.start(int(round(1000 * max(0, self._min_step_interval - t_overhead))))
 
             if stop_loop:
-                #self.log.debug(f'Cursor_write_loop stopping at {current_pos_vec}, dist= {distance_to_target}')
+                # self.log.debug(f'Cursor_write_loop stopping at {current_pos_vec}, dist= {distance_to_target}')
                 self._abort_cursor_movement()
 
                 if self._start_scan_after_cursor:
@@ -770,7 +736,7 @@ class NiXSeriesScanner(ScannerInterface):
 
     def _start_hw_timed_scan(self):
 
-        #self.log.debug("Starting hw timed scan")
+        # self.log.debug("Starting hw timed scan")
         try:
             self._ni_finite_sampling_io().start_buffered_frame()
             self.sigNextDataChunk.emit()
@@ -785,21 +751,20 @@ class NiXSeriesScanner(ScannerInterface):
         Abort the movement and release ni_ao resources.
         """
 
-        #self.log.debug(f"Aborting move.")
+        # self.log.debug(f"Aborting move.")
         self._target_pos = self.get_position()
 
         with self._thread_lock_cursor:
-
             self._abort_cursor_move = True
             self.__t_last_follow = None
             self._toggle_ao_setpoint_channels(False)
 
-            #self.log.debug("hw turned off")
+            # self.log.debug("hw turned off")
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position)
         self._start_scan_after_cursor = True
-        #self.log.debug("Starting timer to move to scan position")
+        # self.log.debug("Starting timer to move to scan position")
         self.__start_ao_write_timer()
 
     def _prepare_movement(self, position, velocity=None):
@@ -812,7 +777,7 @@ class NiXSeriesScanner(ScannerInterface):
         #  QObject::killTimer: Timers cannot be stopped from another thread
         #  QObject::startTimer: Timers cannot be started from another thread
 
-        #self.log.debug("Preparing movement")
+        # self.log.debug("Preparing movement")
 
         with self._thread_lock_cursor:
             self._abort_cursor_move = False
@@ -830,7 +795,7 @@ class NiXSeriesScanner(ScannerInterface):
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]
 
-            #self.log.debug(f"New target pos: {self._target_pos}")
+            # self.log.debug(f"New target pos: {self._target_pos}")
 
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is None:
@@ -842,7 +807,7 @@ class NiXSeriesScanner(ScannerInterface):
 
             self._follow_velocity = velocity
 
-        #self.log.debug("Movement prepared")
+        # self.log.debug("Movement prepared")
         # TODO Keep other axis constant?
 
     def __init_ao_timer(self):
@@ -850,13 +815,14 @@ class NiXSeriesScanner(ScannerInterface):
 
         self.__ni_ao_write_timer.setSingleShot(True)
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
-        self.__ni_ao_write_timer.setInterval(1e3*self._min_step_interval)  # (ms), dynamically calculated during write loop
+        self.__ni_ao_write_timer.setInterval(
+            1e3 * self._min_step_interval)  # (ms), dynamically calculated during write loop
 
     def __start_ao_write_timer(self):
-        #self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        # self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
         try:
             if not self.is_move_running:
-                #self.log.debug("Starting AO write timer...")
+                # self.log.debug("Starting AO write timer...")
                 if self.thread() is not QtCore.QThread.currentThread():
                     QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
                                                     'start',
@@ -865,61 +831,7 @@ class NiXSeriesScanner(ScannerInterface):
                     self.__ni_ao_write_timer.start()
             else:
                 pass
-                #self.log.debug("Dropping timer start, already running")
+                # self.log.debug("Dropping timer start, already running")
 
         except:
             self.log.exception("")
-
-
-class RawDataContainer:
-
-    def __init__(self, channel_keys, number_of_scan_lines, forward_line_resolution, backwards_line_resolution):
-        self.forward_line_resolution = forward_line_resolution
-        self.number_of_scan_lines = number_of_scan_lines
-        self.forward_line_resolution = forward_line_resolution
-        self.backwards_line_resolution = backwards_line_resolution
-
-        self.frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
-        self._raw = {key: np.full(self.frame_size, np.nan) for key in channel_keys}
-
-    def fill_container(self, samples_dict):
-        # get index of first nan from one element of dict
-        first_nan_idx = self.number_of_non_nan_values
-        for key, samples in samples_dict.items():
-            self._raw[key][first_nan_idx:first_nan_idx + len(samples)] = samples
-
-    def forwards_data(self):
-        reshaped_2d_dict = dict.fromkeys(self._raw)
-        for key in self._raw:
-            if self.number_of_scan_lines > 1:
-                reshaped_arr = self._raw[key].reshape(self.number_of_scan_lines,
-                                                      self.forward_line_resolution + self.backwards_line_resolution)
-                reshaped_2d_dict[key] = reshaped_arr[:, :self.forward_line_resolution].T
-            elif self.number_of_scan_lines == 1:
-                reshaped_2d_dict[key] = self._raw[key][:self.forward_line_resolution]
-        return reshaped_2d_dict
-
-    def backwards_data(self):
-        reshaped_2d_dict = dict.fromkeys(self._raw)
-        for key in self._raw:
-            if self.number_of_scan_lines > 1:
-                reshaped_arr = self._raw[key].reshape(self.number_of_scan_lines,
-                                                      self.forward_line_resolution + self.backwards_line_resolution)
-                reshaped_2d_dict[key] = reshaped_arr[:, self.forward_line_resolution:].T
-            elif self.number_of_scan_lines == 1:
-                reshaped_2d_dict[key] = self._raw[key][self.forward_line_resolution:]
-
-        return reshaped_2d_dict
-
-    @property
-    def number_of_non_nan_values(self):
-        """
-        returns number of not NaN samples
-        """
-        return np.sum(~np.isnan(next(iter(self._raw.values()))))
-
-    @property
-    def is_full(self):
-        return self.number_of_non_nan_values == self.frame_size
-
-

@@ -1289,17 +1289,14 @@ class PoiManagerLogic(LogicBase):
         x_axis = np.arange(x_range[0], x_range[1], (x_range[1] - x_range[0]) / len(scan_image[0]))
         y_axis = np.arange(y_range[0], y_range[1], (y_range[1] - y_range[0]) / len(scan_image))
 
-        try:
-            df_poi = cg.locate(np.asarray(scan_image), int(self._poi_diameter), self._poi_threshold, self._poi_mass_threshold)
-        except:
-            self.log.error("A problem has occured, retry with different parameters.")
-            return
+        #self._poi_mass_threshold
+        df_poi = cg.locate(np.asarray(scan_image), self._poi_diameter,  self._poi_threshold,  self._poi_mass_threshold)
 
         z = self.scanner_position[2]
         for idx in df_poi.index:
             i = df_poi['x'][idx]
             j = df_poi['y'][idx]
-            x_pos = x_axis[int(i)] + (i - round(i, 0)) * (x_axis[int(i) + 1] - x_axis[int(i)])*2
-            y_pos = y_axis[int(j)] + (j - round(j, 0)) * (y_axis[int(j) + 1] - y_axis[int(j)])*2
+            x_pos = x_axis[int(i)] + (i - int(i)) * (x_axis[int(i) + 1] - x_axis[int(i)])
+            y_pos = y_axis[int(j)] + (j - int(j)) * (y_axis[int(j) + 1] - y_axis[int(j)])
             poi = [x_pos, y_pos, z]
             self.add_poi(poi, name="{}".format(idx))
