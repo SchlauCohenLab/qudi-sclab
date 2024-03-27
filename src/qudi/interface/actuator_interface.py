@@ -222,10 +222,6 @@ class ActuatorInterface(Base):
         pass
 
     @abstractmethod
-    def get_axes(self):
-        pass
-
-    @abstractmethod
     def move_rel(self,  axes_displacement):
         """ Moves stage in given direction (relative movement)
 
@@ -242,7 +238,7 @@ class ActuatorInterface(Base):
         pass
 
     @abstractmethod
-    def move_abs(self, axes_displacement):
+    def move_abs(self, axes_position):
         """ Moves stage to absolute position (absolute movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
@@ -257,21 +253,6 @@ class ActuatorInterface(Base):
 
     @abstractmethod
     def get_pos(self, axes=None):
-        """ Gets current position of the stage arms
-
-        @param list param_list: optional, if a specific position of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                position is asked.
-
-        @return dict: with keys being the axis labels and item the current
-                      position.
-        """
-        pass
-
-    @abstractmethod
-    def get_target(self, axes=None):
         """ Gets current position of the stage arms
 
         @param list param_list: optional, if a specific position of an axis
