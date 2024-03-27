@@ -24,22 +24,22 @@ from collections import OrderedDict
 import time
 
 from qudi.core.module import Base
-from qudi.interface.motor_interface import MotorInterface
+from qudi.interface.actuator_interface import ActuatorInterface, Axis
 
 
 class MotorAxisDummy:
-    """ Generic dummy motor representing one axis. """
+    """ Generic dummy actuator representing one axis. """
     def __init__(self, label):
         self.label = label
 
 
-class MotorDummy(MotorInterface):
+class MotorDummy(ActuatorInterface):
     """ This is the dummy class to simulate a motorized stage.
 
     Example config for copy-paste:
 
     motor_dummy:
-        module.Class: 'motor.motor_dummy.MotorDummy'
+        module.Class: 'actuator.motor_dummy.MotorDummy'
 
     """
 
@@ -84,7 +84,7 @@ class MotorDummy(MotorInterface):
         pass
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
+        """ Retrieve the hardware constrains from the actuator device.
 
         @return dict: dict with constraints for the magnet hardware. These
                       constraints will be passed via the logic to the GUI so
@@ -107,57 +107,34 @@ class MotorDummy(MotorInterface):
         """
         constraints = OrderedDict()
 
-        axis0 = {'label': self._x_axis.label,
-                 'unit': 'm',
-                 'ramp': ['Sinus', 'Linear'],
-                 'pos_min': 0,
-                 'pos_max': 100,
-                 'pos_step': 0.001,
-                 'vel_min': 0,
-                 'vel_max': 100,
-                 'vel_step': 0.01,
-                 'acc_min': 0.1,
-                 'acc_max': 0.0,
-                 'acc_step': 0.0}
+        axis0 = Axis(name=self._x_axis.label,
+                 unit='m',
+                 value_range=(0, 100),
+                 step_range=(0.001, 0.001),
+                 velocity_range=(0, 100),
+                 'vel_step=0.01,
+                 'acc_min=0.1,
+                 'acc_max=0.0,
+                 'acc_step=0.0}
 
-        axis1 = {'label': self._y_axis.label,
-                 'unit': 'm',
-                 'ramp': ['Sinus', 'Linear'],
-                 'pos_min': 0,
-                 'pos_max': 100,
-                 'pos_step': 0.001,
-                 'vel_min': 0,
-                 'vel_max': 100,
-                 'vel_step': 0.01,
-                 'acc_min': 0.1,
-                 'acc_max': 0.0,
-                 'acc_step': 0.0}
+        axis1 = {name=self._y_axis.label,
+                 unit='m',
+                 value_range=(0, 100),
+                 step_range = (0.001, 0.001),
+                 velocity_range=(0, 100),
 
-        axis2 = {'label': self._z_axis.label,
-                 'unit': 'm',
-                 'ramp': ['Sinus', 'Linear'],
-                 'pos_min': 0,
-                 'pos_max': 100,
-                 'pos_step': 0.001,
-                 'vel_min': 0,
-                 'vel_max': 100,
-                 'vel_step': 0.01,
-                 'acc_min': 0.1,
-                 'acc_max': 0.0,
-                 'acc_step': 0.0}
+                 'vel_step=0.01,
+                 'acc_min=0.1,
+                 'acc_max=0.0,
+                 'acc_step=0.0}
 
-        axis3 = {'label': self._phi_axis.label,
-                 'unit': '°',
-                 'ramp': ['Sinus', 'Trapez'],
-                 'pos_min': 0,
-                 'pos_max': 360,
-                 'pos_step': 0.1,
-                 'vel_min': 1,
-                 'vel_max': 20,
-                 'vel_step': 0.1,
-                 'acc_min': None,
-                 'acc_max': None,
-                 'acc_step': None}
+        axis2 = {name=self._z_axis.label,
+                 unit='m',
+                 value_range=(0, 100),
+                 step_range=(0.001, 0.001),
+                 velocity_range=(0, 100),
+
+        }
 
         # assign the parameter container for x to a name which will identify it
         constraints[axis0['label']] = axis0

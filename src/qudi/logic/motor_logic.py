@@ -20,10 +20,10 @@ class MotorLogic(LogicBase):
     motor_logic:
         module.Class: 'motor_logic.MotorLogic'
         connect:
-            motor: motor
+            actuator: actuator
     """
 
-    # connector for one motor, if multiple motors are needed use the MotorCombinerInterfuse
+    # connector for one actuator, if multiple motors are needed use the MotorCombinerInterfuse
     motor = Connector(interface='MotorInterface')
 
     _scan_min = StatusVar('scan_min', default={})
@@ -88,7 +88,7 @@ class MotorLogic(LogicBase):
         return self._axes.copy()
 
     def move_abs(self, axes_displacement):
-        """ Absolute displacement of the motor axis.
+        """ Absolute displacement of the actuator axis.
 
         @return dict axes_displacement: Dictionary with axis name and target absolute displacement value
 
@@ -111,7 +111,7 @@ class MotorLogic(LogicBase):
         return self.motor().get_pos()
 
     def move_rel(self, axes_displacement):
-        """ Relative displacement of the motor axis.
+        """ Relative displacement of the actuator axis.
 
         @return dict axes_displacement: Dictionary with axis name and target relative displacement value
 
@@ -134,14 +134,14 @@ class MotorLogic(LogicBase):
         return self.motor().get_pos()
 
     def get_position(self, axes_list):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
         return self.motor().get_pos(axes_list)
 
     def get_status(self, axes_list):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
@@ -149,14 +149,14 @@ class MotorLogic(LogicBase):
 
     @property
     def status(self):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
         return self.motor().get_status()
 
     def home(self, axes_list):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
@@ -164,7 +164,7 @@ class MotorLogic(LogicBase):
 
     @property
     def position(self):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
@@ -172,7 +172,7 @@ class MotorLogic(LogicBase):
 
     @property
     def scan_min(self):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
@@ -190,7 +190,7 @@ class MotorLogic(LogicBase):
 
     @property
     def scan_max(self):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
@@ -208,7 +208,7 @@ class MotorLogic(LogicBase):
 
     @property
     def scan_step(self):
-        """ Current position of the motor axis.
+        """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
@@ -226,7 +226,7 @@ class MotorLogic(LogicBase):
 
     @property
     def velocity(self):
-        """ Current velocity of the motor axis.
+        """ Current velocity of the actuator axis.
 
         @return dict velocity: Dictionary with axis name and current velocity
         """
@@ -234,7 +234,7 @@ class MotorLogic(LogicBase):
 
     @velocity.setter
     def velocity(self, velocity):
-        """ Current velocity of the motor axis.
+        """ Current velocity of the actuator axis.
 
         @return dict velocity: Dictionary with axis name and target velocity
 

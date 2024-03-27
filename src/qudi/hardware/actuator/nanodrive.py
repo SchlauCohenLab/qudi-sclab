@@ -27,7 +27,7 @@ import time
 from PySide2 import QtCore
 from PySide2.QtGui import QGuiApplication
 
-from qudi.interface.scanner_interface import ScannerInterface, ScanConstraints, \
+from qudi.interface.actuator_interface import ActuatorInterface, ScanConstraints, \
     ScannerAxis, ScannerChannel, ScanData
 from qudi.interface.slow_counter_interface import SlowCounterInterface, CountingMode, SlowCounterConstraints
 from qudi.core.configoption import ConfigOption
@@ -38,7 +38,7 @@ from qudi.util.helpers import in_range
 
 __all__ = ['NanoDrive']
 
-class NanoDrive(ScannerInterface):
+class NanoDrive(ActuatorInterface):
     """
     This interfuse combines modules of a National Instrument device to make up a scanning hardware.
     One module for software timed analog output (NIXSeriesAnalogOutput) to position e.g. a scanner to a specific
