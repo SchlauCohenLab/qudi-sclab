@@ -60,6 +60,8 @@ class FastCounterDummy(FastCounterInterface):
         self.statusvar = 0
         self._binwidth = 1
         self._gate_length_bins = 8192
+
+
         return
 
     def on_deactivate(self):

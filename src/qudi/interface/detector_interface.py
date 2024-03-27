@@ -218,11 +218,6 @@ class DetectorInterface(Base):
         pass
 
     @abstractmethod
-    def get_channels(self):
-        """ Configure a data stream. See read-only properties for information on each parameter. """
-        pass
-
-    @abstractmethod
     def start_measure(self):
         """ Start the fast counter. """
         pass
