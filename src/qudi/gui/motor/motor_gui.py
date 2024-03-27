@@ -56,12 +56,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 class MotorGui(GuiBase):
     """
-    A graphical interface to control the motor displacement.
+    A graphical interface to control the actuator displacement.
 
     Example config for copy-paste:
 
     motor_gui:
-        module.Class: 'motor.motor_gui.MotorGui'
+        module.Class: 'actuator.motor_gui.MotorGui'
         connect:
             motor_logic: 'motor_logic'
 
