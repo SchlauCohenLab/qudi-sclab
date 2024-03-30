@@ -67,12 +67,14 @@ class NanoDrive(ActuatorInterface):
         super().__init__(*args, **kwargs)
         self._mutex = Mutex()
 
+        self._axes = dict()
+
     def on_activate(self):
         """
         Activate the module
         """
         try:
-            self._dll = ct.cdll.LoadLibrary(self._dll_location)
+            self._dll = ct.windll.LoadLibrary(self._dll_location)
         except OSError:
             self.log.error('Error while loading the dll library, check the dll path.')
         # This module handle only one camera. DLL support up to 8 cameras.
@@ -85,11 +87,11 @@ class NanoDrive(ActuatorInterface):
             return
         self._device_handle = answer
 
-        self._dll.SingleWriteN.argtypes = [ct.c_double, ct.c_int32, ct.c_int32]
-        self._dll.SingleWriteN.restype = ct.c_int32
+        self._dll.MCL_SingleWriteN.argtypes = [ct.c_double, ct.c_int32, ct.c_int32]
+        self._dll.MCL_SingleWriteN.restype = ct.c_int32
 
-        self._dll.SingleReadN.argtypes = [ct.c_int32, ct.c_int32]
-        self._dll.SingleReadN.restype = ct.c_double
+        self._dll.MCL_SingleReadN.argtypes = [ct.c_int32, ct.c_int32]
+        self._dll.MCL_SingleReadN.restype = ct.c_double
 
         self._dll.MCL_GetCalibration.argtypes = [ct.c_int32, ct.c_int32]
         self._dll.MCL_GetCalibration.restype = ct.c_double
@@ -100,9 +102,8 @@ class NanoDrive(ActuatorInterface):
             if axis_range == 0:
                 self.log.error('An error occured when retrieving the axes range.')
             else:
-                self._axes_range[axis] = (0, axis_range)
-                self._axes[axis] = Axis(axis, 'm', (0, axis_range*1e-6), step_range=(0, np.inf),
-                     resolution_range=(0, np.inf), frequency_range=(0, np.inf), velocity_range=(0, np.inf))
+                self._axes[axis] = Axis(axis, 'm', (0, int(axis_range)*1e-6), step_range=(0, np.inf),
+                     resolution_range=(0, 100), frequency_range=(0, 1e3), velocity_range=(0, np.inf))
 
 
     def on_deactivate(self):
@@ -117,7 +118,7 @@ class NanoDrive(ActuatorInterface):
 
         @return dict: scanner constraints
         """
-        return (axis for axis in self._axes.values())
+        return [axis for axis in self._axes.values()]
 
     def home(self, axes=None):
         """ Hard reset of the hardware.
@@ -132,7 +133,7 @@ class NanoDrive(ActuatorInterface):
         """
         for axis, pos in positions.items():
             if self._axes[axis].value_range[0] <= pos <= self._axes[axis].value_range[1]:
-                answer = self._dll.SingleWriteN(pos*1e6, self._axes_cfg[axis], self._device_handle)
+                answer = self._dll.MCL_SingleWriteN(pos*1e6, self._axes_cfg[axis], self._device_handle)
                 if answer < 0:
                     self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
                     return
@@ -149,7 +150,7 @@ class NanoDrive(ActuatorInterface):
         for axis, dis in displacement.items():
             pos = current_pos + dis
             if self._axes[axis].value_range[0] <= pos <= self._axes[axis].value_range[1]:
-                answer = self._dll.SingleWriteN(pos*1e6, self._axes_cfg[axis], self._device_handle)
+                answer = self._dll.MCL_SingleWriteN(pos*1e6, self._axes_cfg[axis], self._device_handle)
                 if answer < 0:
                     self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
                     return
@@ -169,11 +170,11 @@ class NanoDrive(ActuatorInterface):
         if axes is None:
             axes = self._axes.keys()
         for axis in axes:
-            answer = self._dll.SingleWriteN(self._axes_cfg[axis], self._device_handle)
+            answer = self._dll.MCL_SingleReadN(self._axes_cfg[axis], self._device_handle)
             if answer < 0:
                 self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
             else:
-                pos[axis] = answer
+                pos[axis] = answer*1e-6
         return pos
 
     def abort(self, axes=None):
