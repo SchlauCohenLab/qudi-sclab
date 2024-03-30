@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import ctypes
+import time
 import numpy as np
 import nidaqmx as ni
 from functools import wraps
@@ -39,8 +40,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.helpers import natural_sort
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
-from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
-
+from qudi.interface.detector_interface import DetectorInterface, Channel, SampleTiming, StreamingMode
 
 class AnalogMultiChannelReader(_AnalogMultiChannelReader):
     __doc__ = _AnalogMultiChannelReader.__doc__
@@ -77,244 +77,7 @@ class AnalogMultiChannelReader(_AnalogMultiChannelReader):
             )
         return samps_per_chan_read
 
-
-class NIXSeriesInStreamer(DataInStreamInterface):
-    """
-    A National Instruments device that can detect and count digital pulses and measure analog
-    voltages as data stream.
-
-    !!!!!! NI USB 63XX, NI PCIe 63XX and NI PXIe 63XX DEVICES ONLY !!!!!!
-
-    See [National Instruments X Series Documentation](@ref nidaq-x-series) for details.
-
-    Example config for copy-paste:
-
-    nicard_6343_instreamer:
-        module.Class: 'ni_card.ni_x_series_instream.NIXSeriesInStreamer'
-        options:
-            device_name: 'Dev1'
-            digital_sources:  # optional
-                - 'PFI15'
-            analog_sources:  # optional
-                - 'ai0'
-                - 'ai1'
-            # external_sample_clock_source: 'PFI0'  # optional
-            # external_sample_clock_frequency: 1000  # optional
-            adc_voltage_range: [-10, 10]  # optional
-            max_channel_samples_buffer: 10000000  # optional
-            read_write_timeout: 10  # optional
-
-    """
-
-    # config options
-    _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
-    _digital_sources = ConfigOption(name='digital_sources', default=tuple(), missing='info')
-    _analog_sources = ConfigOption(name='analog_sources', default=tuple(), missing='info')
-    _external_sample_clock_source = ConfigOption(name='external_sample_clock_source',
-                                                 default=None,
-                                                 missing='nothing')
-    _external_sample_clock_frequency = ConfigOption(
-        name='external_sample_clock_frequency',
-        default=None,
-        missing='nothing',
-        constructor=lambda x: x if x is None else float(x)
-    )
-    _adc_voltage_range = ConfigOption('adc_voltage_range', default=(-10, 10), missing='info')
-    _max_channel_samples_buffer = ConfigOption(name='max_channel_samples_buffer',
-                                               default=1024**2,
-                                               missing='info',
-                                               constructor=lambda x: max(int(round(x)), 1024**2))
-    _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # NIDAQmx device handle
-        self._device_handle = None
-        # Task handles for NIDAQmx tasks
-        self._di_task_handles = list()
-        self._ai_task_handle = None
-        self._clk_task_handle = None
-        # nidaqmx stream reader instances to help with data acquisition
-        self._di_readers = list()
-        self._ai_reader = None
-        # Internal settings
-        self.__sample_rate = -1.0
-        self.__buffer_size = -1
-        self.__streaming_mode = None
-        # List of all available counters and terminals for this device
-        self.__all_counters = tuple()
-        self.__all_digital_terminals = tuple()
-        self.__all_analog_terminals = tuple()
-        # currently active channels
-        self.__active_channels = tuple()
-        # Stored hardware constraints
-        self._constraints = None
-        self.__tmp_buffer = None
-
-    def on_activate(self):
-        """
-        Starts up the NI-card and performs sanity checks.
-        """
-        # Check if device is connected and set device to use
-        dev_names = ni.system.System().devices.device_names
-        if self._device_name.lower() not in set(dev.lower() for dev in dev_names):
-            raise ValueError(
-                f'Device name "{self._device_name}" not found in list of connected devices: '
-                f'{dev_names}\nActivation of NIXSeriesInStreamer failed!'
-            )
-        for dev in dev_names:
-            if dev.lower() == self._device_name.lower():
-                self._device_name = dev
-                break
-        self._device_handle = ni.system.Device(self._device_name)
-
-        self.__all_counters = tuple(
-            ctr.split('/')[-1] for ctr in self._device_handle.co_physical_chans.channel_names if
-            'ctr' in ctr.lower()
-        )
-        self.__all_digital_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.terminals if
-            'PFI' in term
-        )
-        self.__all_analog_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in
-            self._device_handle.ai_physical_chans.channel_names
-        )
-
-        # Check digital input terminals
-        if self._digital_sources:
-            source_set = set(self._extract_terminal(src) for src in self._digital_sources)
-            invalid_sources = source_set.difference(set(self.__all_digital_terminals))
-            if invalid_sources:
-                self.log.error(
-                    'Invalid digital source terminals encountered. Following sources will '
-                    'be ignored:\n  {0}\nValid digital input terminals are:\n  {1}'
-                    ''.format(', '.join(natural_sort(invalid_sources)),
-                              ', '.join(self.__all_digital_terminals)))
-            self._digital_sources = natural_sort(source_set.difference(invalid_sources))
-
-        # Check analog input channels
-        if self._analog_sources:
-            source_set = set(self._extract_terminal(src) for src in self._analog_sources)
-            invalid_sources = source_set.difference(set(self.__all_analog_terminals))
-            if invalid_sources:
-                self.log.error('Invalid analog source channels encountered. Following sources will '
-                               'be ignored:\n  {0}\nValid analog input channels are:\n  {1}'
-                               ''.format(', '.join(natural_sort(invalid_sources)),
-                                         ', '.join(self.__all_analog_terminals)))
-            self._analog_sources = natural_sort(source_set.difference(invalid_sources))
-
-        # Check if all input channels fit in the device
-        if len(self._digital_sources) > 3:
-            raise ValueError(
-                'Too many digital channels specified. Maximum number of digital channels is 3.'
-            )
-        if len(self._analog_sources) > 16:
-            raise ValueError(
-                'Too many analog channels specified. Maximum number of analog channels is 16.'
-            )
-
-        # Check if there are any valid input channels left
-        if not self._analog_sources and not self._digital_sources:
-            raise ValueError(
-                'No valid analog or digital sources defined in config. Activation of '
-                'NIXSeriesInStreamer failed!'
-            )
-
-        # Create constraints
-        channel_units = {chnl: 'counts/s' for chnl in self._digital_sources}
-        channel_units.update({chnl: 'V' for chnl in self._analog_sources})
-        self._constraints = DataInStreamConstraints(
-            channel_units=channel_units,
-            sample_timing=SampleTiming.CONSTANT,
-            streaming_modes=[StreamingMode.CONTINUOUS], # TODO: Implement FINITE streaming mode
-            data_type=np.float64,
-            channel_buffer_size=ScalarConstraint(default=1024**2,
-                                                 bounds=(2, self._max_channel_samples_buffer),
-                                                 increment=1,
-                                                 enforce_int=True),
-            # FIXME: What is the minimum frequency for the digital counter timebase?
-            sample_rate=ScalarConstraint(default=50.0,
-                                         bounds=(self._device_handle.ai_min_rate,
-                                                 self._device_handle.ai_max_multi_chan_rate),
-                                         increment=1,
-                                         enforce_int=False)
-        )
-
-        # Check external sample clock source
-        if self._external_sample_clock_source is not None:
-            new_name = self._extract_terminal(self._external_sample_clock_source)
-            if new_name in self.__all_digital_terminals:
-                self._external_sample_clock_source = new_name
-            else:
-                self.log.error(
-                    f'No valid source terminal found for external_sample_clock_source '
-                    f'"{self._external_sample_clock_source}". Falling back to internal sampling '
-                    f'clock.'
-                )
-                self._external_sample_clock_source = None
-
-        # Check external sample clock frequency
-        if self._external_sample_clock_source is None:
-            self._external_sample_clock_frequency = None
-        elif self._external_sample_clock_frequency is None:
-            self.log.error('External sample clock source supplied but no clock frequency. '
-                           'Falling back to internal clock instead.')
-            self._external_sample_clock_source = None
-        elif not self._constraints.sample_rate.is_valid(self._external_sample_clock_frequency):
-            self.log.error(
-                f'External sample clock frequency requested '
-                f'({self._external_sample_clock_frequency:.3e}Hz) is out of bounds. Please '
-                f'choose a value between {self._constraints.sample_rate.minimum:.3e}Hz and '
-                f'{self._constraints.sample_rate.maximum:.3e}Hz. Value will be clipped to the '
-                f'closest boundary.'
-            )
-            self._external_sample_clock_frequency = self._constraints.sample_rate.clip(
-                self._external_sample_clock_frequency
-            )
-
-        self._terminate_all_tasks()
-        if self._external_sample_clock_frequency is None:
-            sample_rate = self._constraints.sample_rate.default
-        else:
-            sample_rate = self._external_sample_clock_frequency
-        self.configure(active_channels=self._constraints.channel_units,
-                       streaming_mode=StreamingMode.CONTINUOUS,
-                       channel_buffer_size=self._constraints.channel_buffer_size.default,
-                       sample_rate=sample_rate)
-
-    def on_deactivate(self):
-        """ Shut down the NI card. """
-        self._terminate_all_tasks()
-
-    @property
-    def constraints(self) -> DataInStreamConstraints:
-        """ Read-only property returning the constraints on the settings for this data streamer. """
-        return self._constraints
-
-    @property
-    def sample_rate(self):
-        """ Read-only property returning the currently set sample rate in Hz.
-        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
-        this property represents only a hint to the actual hardware timebase and can not be
-        considered accurate.
-        """
-        return self.__sample_rate
-
-    @property
-    def channel_buffer_size(self) -> int:
-        """ Read-only property returning the currently set buffer size in samples per channel.
-        The total buffer size in bytes can be estimated by:
-            <buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
-
-        For StreamingMode.FINITE this will also be the total number of samples to acquire per
-        channel.
-        """
-        return self.__buffer_size
-
-
-class NIXSeriesInStreamer(DataInStreamInterface):
+class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
     """
     A National Instruments device that can detect and count digital pulses and measure analog
     voltages as data stream.
@@ -339,6 +102,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             adc_voltage_range: [-10, 10]  # optional
             max_channel_samples_buffer: 10000000  # optional
             read_write_timeout: 10  # optional
+            # clock_counter: 'ctr2'  # optional
 
     """
 
@@ -361,6 +125,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                                                missing='info',
                                                constructor=lambda x: max(int(round(x)), 1024**2))
     _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
+    _clock_counter = ConfigOption('clock_counter', default=None, missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -375,7 +140,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         self._di_readers = list()
         self._ai_reader = None
         # Internal settings
-        self.__sample_rate = -1.0
+        self.__sample_rate = -1
         self.__buffer_size = -1
         self.__streaming_mode = None
         # List of all available counters and terminals for this device
@@ -477,6 +242,33 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                                          increment=1,
                                          enforce_int=False)
         )
+
+        self._channels = dict()
+        for ch in self._digital_sources:
+            self._channels[ch] = Channel(ch, unit=channel_units[ch],
+                                     dtype=np.float64,
+                                     streaming_mode=StreamingMode.CONTINUOUS, buffer_size=ScalarConstraint(default=1024**2,
+                                                 bounds=(2, self._max_channel_samples_buffer),
+                                                 increment=1,
+                                                 enforce_int=True),
+                                     sample_timing=SampleTiming.CONSTANT, sample_rate=ScalarConstraint(default=50.0,
+                                         bounds=(self._device_handle.ai_min_rate,
+                                                 self._device_handle.ai_max_multi_chan_rate),
+                                         increment=1,
+                                         enforce_int=False), bin_width=None)
+
+        for ch in self._analog_sources:
+            self._channels[ch] = Channel(ch, unit=channel_units[ch],
+                                     dtype=np.float64,
+                                     streaming_mode=StreamingMode.CONTINUOUS, buffer_size=ScalarConstraint(default=1024**2,
+                                                 bounds=(2, self._max_channel_samples_buffer),
+                                                 increment=1,
+                                                 enforce_int=True),
+                                     sample_timing=SampleTiming.CONSTANT, sample_rate=ScalarConstraint(default=50.0,
+                                         bounds=(self._device_handle.ai_min_rate,
+                                                 self._device_handle.ai_max_multi_chan_rate),
+                                         increment=1,
+                                         enforce_int=False), bin_width=None)
 
         # Check external sample clock source
         if self._external_sample_clock_source is not None:
@@ -567,7 +359,8 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         """ Configure a data stream. See read-only properties for information on each parameter. """
         if self.module_state() == 'locked':
             raise RuntimeError('Unable to configure data stream while it is already running')
-        streaming_mode = StreamingMode(streaming_mode)
+        if isinstance(streaming_mode, int):
+            streaming_mode = StreamingMode(streaming_mode)
         channel_buffer_size = int(round(channel_buffer_size))
         if any(ch not in self._constraints.channel_units for ch in active_channels):
             raise ValueError(
@@ -791,6 +584,56 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         return data_buffer, None
 
     # =============================================================================================
+
+    def get_constraints(self):
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        return [ch for ch in self._channels.values()]
+
+    def configure_channels(self, channels_settings):
+        """ Configure a data stream. See read-only properties for information on each parameter. """
+        pass
+
+    def get_data(self, channels=None):
+        """ Polls the current timetrace data from the fast counter.
+
+        Return value is a numpy array (dtype = int64).
+        The binning, specified by calling configure() in forehand, must be
+        taken care of in this hardware class. A possible overflow of the
+        histogram bins must be caught here and taken care of.
+        If the counter is NOT GATED it will return a tuple (1D-numpy-array, info_dict) with
+            returnarray[timebin_index]
+        If the counter is GATED it will return a tuple (2D-numpy-array, info_dict) with
+            returnarray[gate_index, timebin_index]
+
+        info_dict is a dictionary with keys :
+            - 'elapsed_sweeps' : the elapsed number of sweeps
+            - 'elapsed_time' : the elapsed time in seconds
+
+        If the hardware does not support these features, the values should be None
+        """
+        if self.module_state() == 'locked':
+            data = np.array(self.read_single_point()[0])
+        else:
+            self.start_stream()
+            data = np.array(self.read_single_point()[0])
+            self.stop_stream()
+        return {ch:data[i] for i, ch in enumerate(self.__active_channels)}
+
+    def get_status(self, channels=None):
+        """ Get the status of the position
+
+        @param list param_list: optional, if a specific status of an axis
+                                is desired, then the labels of the needed
+                                axis should be passed in the param_list.
+                                If nothing is passed, then from each axis the
+                                status is asked.
+
+        @return dict: with the axis label as key and the status number as item.
+        """
+        return {ch: 0 for ch in self.__active_channels.keys()}
+
+    # =============================================================================================
+
     def _init_sample_clock(self):
         """ If no external clock is given, configures a counter to provide the sample clock for all
         channels.
@@ -803,6 +646,53 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                     'close the previous one.'
                 )
 
+            # Check if task by that name already exists
+            task_name = f'SampleClock_{id(self):d}'
+            try:
+                task = ni.Task(task_name)
+            except ni.DaqError as err:
+                raise RuntimeError(f'Could not create task with name "{task_name}"') from err
+
+            if self._clock_counter is not None:
+                if self._clock_counter in self.__all_counters:
+
+                    src = self._clock_counter
+                    # Try to configure the task
+                    try:
+                        task.co_channels.add_co_pulse_chan_freq(f'/{self._device_name}/{src}',
+                                                                freq=self.__sample_rate,
+                                                                idle_state=ni.constants.Level.LOW)
+                        task.timing.cfg_implicit_timing(
+                            sample_mode=ni.constants.AcquisitionType.CONTINUOUS
+                        )
+                    except ni.DaqError as err:
+                        try:
+                            del task
+                        except NameError:
+                            pass
+                        raise RuntimeError('Error while configuring sample clock task') from err
+
+                    # Try to reserve resources for the task
+                    try:
+                        task.control(ni.constants.TaskMode.TASK_RESERVE)
+                    except ni.DaqError as err:
+                        # Try to clean up task handle
+                        try:
+                            task.close()
+                        except ni.DaqError:
+                            pass
+                        try:
+                            del task
+                        except NameError:
+                            pass
+                    else:
+                        self._clk_task_handle = task
+                        return
+                else:
+                    self.log.exception(
+                        'No valid clock counter source defined in config.'
+                        'The internal clock counter will find among the available counters.'
+                    )
             # Try to find an available counter
             for src in self.__all_counters:
                 # Check if task by that name already exists

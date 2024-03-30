@@ -96,7 +96,7 @@ class Channel:
                 )
             self._bin_width = bin_width
         else:
-            self._bin_width = 1/self._sample_rate
+            self._bin_width = 1/self._sample_rate.default
 
         # attributing 'buffer_size'
         if not isinstance(buffer_size, ScalarConstraint):
@@ -215,16 +215,6 @@ class DetectorInterface(Base):
     @abstractmethod
     def configure_channels(self, channels_settings):
         """ Configure a data stream. See read-only properties for information on each parameter. """
-        pass
-
-    @abstractmethod
-    def start_measure(self):
-        """ Start the fast counter. """
-        pass
-
-    @abstractmethod
-    def stop_measure(self):
-        """ Stop the fast counter. """
         pass
 
     @abstractmethod

@@ -27,6 +27,8 @@ import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
 
+from qudi.interface.actuator_interface import Axis
+from qudi.interface.detector_interface import Channel
 
 class ScannerInterface(Base):
     """ This is the Interface class to define the controls for a scanning probe device
@@ -168,18 +170,18 @@ class ScanData:
             raise ValueError('Parameters "scan_axes" and "scan_resolution" must have same len. '
                              'Given {0:d} and {1:d}, respectively.'.format(len(scan_axes),
                                                                            len(scan_resolution)))
-        if not all(isinstance(ax, ScannerAxis) for ax in scan_axes):
+        if not all(isinstance(ax, Axis) for ax in scan_axes):
             raise TypeError(
-                'Parameter "scan_axes" must be iterable containing only ScannerAxis objects')
+                'Parameter "scan_axes" must be iterable containing only Axis objects')
         if not all(len(ax_range) == 2 for ax_range in scan_range):
             raise TypeError(
                 'Parameter "scan_range" must be iterable containing only value pairs (len=2).')
         if not all(isinstance(res, int) for res in scan_resolution):
             raise TypeError(
                 'Parameter "scan_resolution" must be iterable containing only integers.')
-        if not all(isinstance(ch, ScannerChannel) for ch in channels):
+        if not all(isinstance(ch, Channel) for ch in channels):
             raise TypeError(
-                'Parameter "channels" must be iterable containing only ScannerChannel objects.')
+                'Parameter "channels" must be iterable containing only Channel objects.')
         if not all(np.issubdtype(ch.dtype, np.floating) for ch in channels):
             raise TypeError('channel dtypes must be either builtin or numpy floating types')
 
@@ -540,9 +542,9 @@ class ScanConstraints:
                  square_px_only):
         """
         """
-        if not all(isinstance(ax, ScannerAxis) for ax in axes):
+        if not all(isinstance(ax, Axis) for ax in axes):
             raise TypeError('Parameter "axes" must be of type ScannerAxis.')
-        if not all(isinstance(ch, ScannerChannel) for ch in channels):
+        if not all(isinstance(ch, Channel) for ch in channels):
             raise TypeError('Parameter "channels" must be of type ScannerChannel.')
         if not isinstance(backscan_configurable, bool):
             raise TypeError('Parameter "backscan_configurable" must be of type bool.')

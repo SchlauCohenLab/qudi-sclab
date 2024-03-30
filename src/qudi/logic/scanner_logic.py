@@ -87,7 +87,7 @@ class ScannerLogic(LogicBase):
         constr = self.scanner_constraints
         self._scan_saved_to_hist = True
 
-        self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
+        self.log.info(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
         # scanner settings loaded from StatusVar or defaulted
         new_settings = self.check_sanity_scan_settings(self.scan_settings)
         if new_settings != self.scan_settings:
@@ -97,7 +97,7 @@ class ScannerLogic(LogicBase):
 
         if not self._min_poll_interval:
             # defaults to maximum scan frequency of scanner
-            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency_range for ax in constr.axes])
+            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency_range[1] for ax in constr.axes])
 
         """
         if not isinstance(self._scan_ranges, dict):
@@ -315,7 +315,7 @@ class ScannerLogic(LogicBase):
             new_pos = self._scanner().move_absolute(new_pos, blocking=move_blocking)
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
-            #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            #self.log.info(f"Logic set target with id {caller_id} to new: {new_pos}")
             self.sigScannerTargetChanged.emit(
                 new_pos,
                 self.module_uuid if caller_id is None else caller_id
@@ -371,9 +371,8 @@ class ScannerLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error(f"Couldn't configure scan: {settings}")
                 return -1
-
             self._update_scan_settings(scan_axes, new_settings)
-            #self.log.debug("Applied new scan settings")
+            self.log.info("Applied new scan settings")
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
@@ -412,6 +411,7 @@ class ScannerLogic(LogicBase):
             return err
 
     def __scan_poll_loop(self):
+
         with self._thread_lock:
             try:
                 if self.module_state() == 'idle':
@@ -420,6 +420,7 @@ class ScannerLogic(LogicBase):
                 if self._scanner().module_state() == 'idle':
                     self.stop_scan()
                     return
+
                 # TODO Added the following line as a quick test; Maybe look at it with more caution if correct
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
 
