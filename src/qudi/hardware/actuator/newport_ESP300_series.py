@@ -4,8 +4,8 @@ __all__ = ['NewportMotor']
 
 import time
 from collections import OrderedDict
-from pylablib.devices import Newport
-from qudi.interface.motor_interface import MotorInterface
+import visa
+from qudi.interface.actuator_interface import MotorInterface
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
@@ -35,32 +35,41 @@ STATUS_dict = {
     '47': "TRACKING from TRACKING",
 }
 
-class Newport8742Series(MotorInterface):
+class NewportMotor(MotorInterface):
     """
-    Module for the picomotor Controller Kit Four-Axis (8742-4-KIT) sold by Newport.
+    Module for the CONEX controller for Agilis stages sold by Newport.
 
     The controller takes commands of the form xxAAnn over a serial connection,
     where xx is the controller address and nn can be a value to be set or a question mark
     to get the value or it can be missing.
 
+
     Example config for copy-paste:
 
-    newport_8742_series:
-        module.Class: 'motor.newport_8742_series.Newport8742Series'
+    newport_conex:
+        module.Class: 'actuator.motor_newport_conex.MotorNewportConex'
         options:
-            devices:
-                device_1:
-                    port: 'COM1'
-                    axis_labels: ['x1', 'y1', 'z1', 'phi1']
-                    axis_units: ['um', 'um', 'um', 'theta']
-                device_2:
-                    port: 'COM2'
-                    axis_labels: ['x2', 'y2', 'z2', 'phi2']
-                    axis_units: ['um', 'um', 'um', 'theta']
+            axis:
+                x1:
+                    port: 'COM5'
+                    adress: '01'
+                    unit: 'm'
+                x2:
+                    port: 'COM7'
+                    adress: '01'
+                    unit: 'm'
+                y1:
+                    port: 'COM8'
+                    adress: '01'
+                    unit: 'm'
+                y2:
+                    port: 'COM9'
+                    adress: '01'
+                    unit: 'm'
 
     """
 
-    _devices = ConfigOption('devices', missing='error')
+    _axis = ConfigOption('axis', missing='error')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -69,20 +78,15 @@ class Newport8742Series(MotorInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-
-        self._instr = []
-        for port in self._devices:
-            self._instr.append(Newport.Picomotor8742())
+        self._rm = visa.ResourceManager()
 
         self._devices = {}
         for label, configs in self._axis.items():
             device = self._rm.open_resource(configs["port"])
-            device.baud_rate = 921600
+            device.baud_rate = 19200
             device.read_termination = "\r\n"
 
             self._devices[label] = device
-
-            self.write(label, 'OR')
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -113,7 +117,7 @@ class Newport8742Series(MotorInterface):
         device.write("{}{}?".format(adress, command))
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
+        """ Retrieve the hardware constrains from the actuator device.
 
         @return dict: dict with constraints for the sequence generation and GUI
 
@@ -157,7 +161,7 @@ class Newport8742Series(MotorInterface):
         for label, pos in param_dict.items():
             command = "PR{}".format(param_dict[label] * 1e3)
             self.write(label, command)
-            pos_dict[label] = float(self.query(label, "TH")) * 1e-3
+            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
 
         return pos_dict
 
@@ -172,7 +176,7 @@ class Newport8742Series(MotorInterface):
         for label, pos in param_dict.items():
             command = "PA{}".format(param_dict[label] * 1e3)
             self.write(label, command)
-            pos_dict[label] = float(self.query(label, "TH")) * 1e-3
+            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
 
         return pos_dict
 
@@ -223,7 +227,7 @@ class Newport8742Series(MotorInterface):
         return status_dict
 
     def calibrate(self, param_list=None):
-        """ Calibrates the rotation motor
+        """ Calibrates the rotation actuator
 
         @param list param_list: Dictionary with axis name
 
@@ -234,7 +238,7 @@ class Newport8742Series(MotorInterface):
         pos_dict = {}
         for label in param_list:
             self.write(label, "OR")
-            pos_dict[label] = float(self.query(label, "TH")) * 1e-3
+            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
 
         return pos_dict
 

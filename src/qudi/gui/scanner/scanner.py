@@ -31,15 +31,15 @@ import qudi.util.uic as uic
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanner_interface import ScanData
 from qudi.core.module import GuiBase
 from qudi.logic.scanner_optimize_logic import OptimizerScanSequence
 
-from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
-from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
-from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
-from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
-from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
+from qudi.gui.scanner.axes_control_dockwidget import AxesControlDockWidget
+from qudi.gui.scanner.optimizer_setting_dialog import OptimizerSettingDialog
+from qudi.gui.scanner.scan_settings_dialog import ScannerSettingDialog
+from qudi.gui.scanner.scan_dockwidget import ScanDockWidget
+from qudi.gui.scanner.optimizer_dockwidget import OptimizerDockWidget
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):

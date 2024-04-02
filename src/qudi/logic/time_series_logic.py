@@ -16,7 +16,7 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
 from qudi.util.network import netobtain
-from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+from qudi.interface.detector_interface import StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamConstraints
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.units import ScaledFloat

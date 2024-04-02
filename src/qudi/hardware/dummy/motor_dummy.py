@@ -19,27 +19,21 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
+import numpy as np
 from collections import OrderedDict
 import time
 
 from qudi.core.module import Base
-from qudi.interface.motor_interface import MotorInterface
+from qudi.interface.actuator_interface import ActuatorInterface, Axis
 
 
-class MotorAxisDummy:
-    """ Generic dummy motor representing one axis. """
-    def __init__(self, label):
-        self.label = label
-
-
-class MotorDummy(MotorInterface):
+class MotorDummy(ActuatorInterface):
     """ This is the dummy class to simulate a motorized stage.
 
     Example config for copy-paste:
 
     motor_dummy:
-        module.Class: 'motor.motor_dummy.MotorDummy'
+        module.Class: 'actuator.motor_dummy.MotorDummy'
 
     """
 
@@ -49,42 +43,26 @@ class MotorDummy(MotorInterface):
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
 
-        # these label should be actually set by the config.
-        self._x_axis = MotorAxisDummy('x')
-        self._y_axis = MotorAxisDummy('y')
-        self._z_axis = MotorAxisDummy('z')
-        self._phi_axis = MotorAxisDummy('phi')
-
         self._wait_after_movement = 1 #in seconds
 
     #TODO: Checks if configuration is set and is reasonable
 
     def on_activate(self):
 
-        # PLEASE REMEMBER: DO NOT CALL THE POSITION SIMPLY self.x SINCE IT IS
-        # EXTREMLY DIFFICULT TO SEARCH FOR x GLOBALLY IN A FILE!
-        # Same applies to all other axis. I.e. choose more descriptive names.
+        # these name should be actually set by the config.
+        self._x_axis = Axis('x', 'm', (0, 100e-6), step_range=(0, np.inf),
+                 resolution_range=(1e-9, np.inf), frequency_range=(0, np.inf), velocity_range=(0, np.inf))
+        self._y_axis = Axis('y', 'm', (0, 100e-6), step_range=(0, np.inf),
+                 resolution_range=(1e-9, np.inf), frequency_range=(0, np.inf), velocity_range=(0, np.inf))
+        self._z_axis = Axis('z', 'm', (0, 200e-6), step_range=(0, np.inf),
+                 resolution_range=(1e-9, np.inf), frequency_range=(0, np.inf), velocity_range=(0, np.inf))
 
-        self._x_axis.pos = 0.0
-        self._y_axis.pos = 0.0
-        self._z_axis.pos = 0.0
-        self._phi_axis.pos = 0.0
-
-        self._x_axis.vel = 1.0
-        self._y_axis.vel = 1.0
-        self._z_axis.vel = 1.0
-        self._phi_axis.vel = 1.0
-
-        self._x_axis.status = 0
-        self._y_axis.status = 0
-        self._z_axis.status = 0
-        self._phi_axis.status = 0
 
     def on_deactivate(self):
         pass
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
+        """ Retrieve the hardware constrains from the actuator device.
 
         @return dict: dict with constraints for the magnet hardware. These
                       constraints will be passed via the logic to the GUI so
@@ -93,11 +71,11 @@ class MotorDummy(MotorInterface):
 
         Provides all the constraints for each axis of a motorized stage
         (like total travel distance, velocity, ...)
-        Each axis has its own dictionary, where the label is used as the
+        Each axis has its own dictionary, where the name is used as the
         identifier throughout the whole module. The dictionaries for each axis
         are again grouped together in a constraints dictionary in the form
 
-            {'<label_axis0>': axis0 }
+            {'<name_axis0>': axis0 }
 
         where axis0 is again a dict with the possible values defined below. The
         possible keys in the constraint are defined here in the interface file.
@@ -105,69 +83,9 @@ class MotorDummy(MotorInterface):
         insert just None. If you are not sure about the meaning, look in other
         hardware files to get an impression.
         """
-        constraints = OrderedDict()
+        return [self._x_axis, self._y_axis, self._z_axis]
 
-        axis0 = {'label': self._x_axis.label,
-                 'unit': 'm',
-                 'ramp': ['Sinus', 'Linear'],
-                 'pos_min': 0,
-                 'pos_max': 100,
-                 'pos_step': 0.001,
-                 'vel_min': 0,
-                 'vel_max': 100,
-                 'vel_step': 0.01,
-                 'acc_min': 0.1,
-                 'acc_max': 0.0,
-                 'acc_step': 0.0}
-
-        axis1 = {'label': self._y_axis.label,
-                 'unit': 'm',
-                 'ramp': ['Sinus', 'Linear'],
-                 'pos_min': 0,
-                 'pos_max': 100,
-                 'pos_step': 0.001,
-                 'vel_min': 0,
-                 'vel_max': 100,
-                 'vel_step': 0.01,
-                 'acc_min': 0.1,
-                 'acc_max': 0.0,
-                 'acc_step': 0.0}
-
-        axis2 = {'label': self._z_axis.label,
-                 'unit': 'm',
-                 'ramp': ['Sinus', 'Linear'],
-                 'pos_min': 0,
-                 'pos_max': 100,
-                 'pos_step': 0.001,
-                 'vel_min': 0,
-                 'vel_max': 100,
-                 'vel_step': 0.01,
-                 'acc_min': 0.1,
-                 'acc_max': 0.0,
-                 'acc_step': 0.0}
-
-        axis3 = {'label': self._phi_axis.label,
-                 'unit': '°',
-                 'ramp': ['Sinus', 'Trapez'],
-                 'pos_min': 0,
-                 'pos_max': 360,
-                 'pos_step': 0.1,
-                 'vel_min': 1,
-                 'vel_max': 20,
-                 'vel_step': 0.1,
-                 'acc_min': None,
-                 'acc_max': None,
-                 'acc_step': None}
-
-        # assign the parameter container for x to a name which will identify it
-        constraints[axis0['label']] = axis0
-        constraints[axis1['label']] = axis1
-        constraints[axis2['label']] = axis2
-        constraints[axis3['label']] = axis3
-
-        return constraints
-
-    def move_rel(self,  param_dict):
+    def move_rel(self,  axes_displacement):
         """ Moves stage in given direction (relative movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
@@ -180,105 +98,86 @@ class MotorDummy(MotorInterface):
                                 that. For a movement in x the dict should e.g.
                                 have the form:
                                     dict = { 'x' : 23 }
-                                where the label 'x' corresponds to the chosen
-                                axis label.
+                                where the name 'x' corresponds to the chosen
+                                axis name.
 
         A smart idea would be to ask the position after the movement.
         """
         curr_pos_dict = self.get_pos()
         constraints = self.get_constraints()
 
-        if param_dict.get(self._x_axis.label) is not None:
-            move_x = param_dict[self._x_axis.label]
-            curr_pos_x = curr_pos_dict[self._x_axis.label]
+        if param_dict.get(self._x_axis.name) is not None:
+            move_x = param_dict[self._x_axis.name]
+            curr_pos_x = curr_pos_dict[self._x_axis.name]
 
-            if  (curr_pos_x + move_x > constraints[self._x_axis.label]['pos_max'] ) or\
-                (curr_pos_x + move_x < constraints[self._x_axis.label]['pos_min']):
+            if  (curr_pos_x + move_x > constraints[self._x_axis.name]['pos_max'] ) or\
+                (curr_pos_x + move_x < constraints[self._x_axis.name]['pos_min']):
 
                 self.log.warning('Cannot make further movement of the axis '
                         '"{0}" with the step {1}, since the border [{2},{3}] '
                         'was reached! Ignore command!'.format(
-                            self._x_axis.label, move_x,
-                            constraints[self._x_axis.label]['pos_min'],
-                            constraints[self._x_axis.label]['pos_max']))
+                            self._x_axis.name, move_x,
+                            constraints[self._x_axis.name]['pos_min'],
+                            constraints[self._x_axis.name]['pos_max']))
             else:
                 self._make_wait_after_movement()
                 self._x_axis.pos = self._x_axis.pos + move_x
 
-        if param_dict.get(self._y_axis.label) is not None:
-            move_y = param_dict[self._y_axis.label]
-            curr_pos_y = curr_pos_dict[self._y_axis.label]
+        if param_dict.get(self._y_axis.name) is not None:
+            move_y = param_dict[self._y_axis.name]
+            curr_pos_y = curr_pos_dict[self._y_axis.name]
 
-            if  (curr_pos_y + move_y > constraints[self._y_axis.label]['pos_max'] ) or\
-                (curr_pos_y + move_y < constraints[self._y_axis.label]['pos_min']):
+            if  (curr_pos_y + move_y > constraints[self._y_axis.name]['pos_max'] ) or\
+                (curr_pos_y + move_y < constraints[self._y_axis.name]['pos_min']):
 
                 self.log.warning('Cannot make further movement of the axis '
                         '"{0}" with the step {1}, since the border [{2},{3}] '
                         'was reached! Ignore command!'.format(
-                            self._y_axis.label, move_y,
-                            constraints[self._y_axis.label]['pos_min'],
-                            constraints[self._y_axis.label]['pos_max']))
+                            self._y_axis.name, move_y,
+                            constraints[self._y_axis.name]['pos_min'],
+                            constraints[self._y_axis.name]['pos_max']))
             else:
                 self._make_wait_after_movement()
                 self._y_axis.pos = self._y_axis.pos + move_y
 
-        if param_dict.get(self._z_axis.label) is not None:
-            move_z = param_dict[self._z_axis.label]
-            curr_pos_z = curr_pos_dict[self._z_axis.label]
+        if param_dict.get(self._z_axis.name) is not None:
+            move_z = param_dict[self._z_axis.name]
+            curr_pos_z = curr_pos_dict[self._z_axis.name]
 
-            if  (curr_pos_z + move_z > constraints[self._z_axis.label]['pos_max'] ) or\
-                (curr_pos_z + move_z < constraints[self._z_axis.label]['pos_min']):
+            if  (curr_pos_z + move_z > constraints[self._z_axis.name]['pos_max'] ) or\
+                (curr_pos_z + move_z < constraints[self._z_axis.name]['pos_min']):
 
                 self.log.warning('Cannot make further movement of the axis '
                         '"{0}" with the step {1}, since the border [{2},{3}] '
                         'was reached! Ignore command!'.format(
-                            self._z_axis.label, move_z,
-                            constraints[self._z_axis.label]['pos_min'],
-                            constraints[self._z_axis.label]['pos_max']))
+                            self._z_axis.name, move_z,
+                            constraints[self._z_axis.name]['pos_min'],
+                            constraints[self._z_axis.name]['pos_max']))
             else:
                 self._make_wait_after_movement()
                 self._z_axis.pos = self._z_axis.pos + move_z
 
-
-        if param_dict.get(self._phi_axis.label) is not None:
-            move_phi = param_dict[self._phi_axis.label]
-            curr_pos_phi = curr_pos_dict[self._phi_axis.label]
-
-            if  (curr_pos_phi + move_phi > constraints[self._phi_axis.label]['pos_max'] ) or\
-                (curr_pos_phi + move_phi < constraints[self._phi_axis.label]['pos_min']):
-
-                self.log.warning('Cannot make further movement of the axis '
-                        '"{0}" with the step {1}, since the border [{2},{3}] '
-                        'was reached! Ignore command!'.format(
-                            self._phi_axis.label, move_phi,
-                            constraints[self._phi_axis.label]['pos_min'],
-                            constraints[self._phi_axis.label]['pos_max']))
-            else:
-                self._make_wait_after_movement()
-                self._phi_axis.pos = self._phi_axis.pos + move_phi
-
-
-    def move_abs(self, param_dict):
+    def move_abs(self, axes_position):
         """ Moves stage to absolute position (absolute movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
-                                 {'axis_label': <a-value>}.
-                                 'axis_label' must correspond to a label given
+                                 {'axis_name': <a-value>}.
+                                 'axis_name' must correspond to a name given
                                  to one of the axis.
         A smart idea would be to ask the position after the movement.
         """
         constraints = self.get_constraints()
 
-        if param_dict.get(self._x_axis.label) is not None:
-            desired_pos = param_dict[self._x_axis.label]
-            constr = constraints[self._x_axis.label]
+        if param_dict.get(self._x_axis.name) is not None:
+            desired_pos = param_dict[self._x_axis.name]
+            constr = constraints[self._x_axis.name]
 
             if not(constr['pos_min'] <= desired_pos <= constr['pos_max']):
                 self.log.warning('Cannot make absolute movement of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._x_axis.label, desired_pos,
+                            self._x_axis.name, desired_pos,
                             constr['pos_min'],
                             constr['pos_max']))
             else:
@@ -286,15 +185,15 @@ class MotorDummy(MotorInterface):
                 self._x_axis.pos = desired_pos
 
 
-        if param_dict.get(self._y_axis.label) is not None:
-            desired_pos = param_dict[self._y_axis.label]
-            constr = constraints[self._y_axis.label]
+        if param_dict.get(self._y_axis.name) is not None:
+            desired_pos = param_dict[self._y_axis.name]
+            constr = constraints[self._y_axis.name]
 
             if not(constr['pos_min'] <= desired_pos <= constr['pos_max']):
                 self.log.warning('Cannot make absolute movement of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._y_axis.label, desired_pos,
+                            self._y_axis.name, desired_pos,
                             constr['pos_min'],
                             constr['pos_max']))
             else:
@@ -302,38 +201,22 @@ class MotorDummy(MotorInterface):
                 self._y_axis.pos = desired_pos
 
 
-        if param_dict.get(self._z_axis.label) is not None:
-            desired_pos = param_dict[self._z_axis.label]
-            constr = constraints[self._z_axis.label]
+        if param_dict.get(self._z_axis.name) is not None:
+            desired_pos = param_dict[self._z_axis.name]
+            constr = constraints[self._z_axis.name]
 
             if not(constr['pos_min'] <= desired_pos <= constr['pos_max']):
                 self.log.warning('Cannot make absolute movement of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._z_axis.label, desired_pos,
+                            self._z_axis.name, desired_pos,
                             constr['pos_min'],
                             constr['pos_max']))
             else:
                 self._make_wait_after_movement()
                 self._z_axis.pos = desired_pos
 
-
-        if param_dict.get(self._phi_axis.label) is not None:
-            desired_pos = param_dict[self._phi_axis.label]
-            constr = constraints[self._phi_axis.label]
-
-            if not(constr['pos_min'] <= desired_pos <= constr['pos_max']):
-                self.log.warning('Cannot make absolute movement of the axis '
-                        '"{0}" to possition {1}, since it exceeds the limits '
-                        '[{2},{3}] ! Command is ignored!'.format(
-                            self._phi_axis.label, desired_pos,
-                            constr['pos_min'],
-                            constr['pos_max']))
-            else:
-                self._make_wait_after_movement()
-                self._phi_axis.pos = desired_pos
-
-    def abort(self):
+    def abort(self, axes=None):
         """Stops movement of the stage
 
         @return int: error code (0:OK, -1:error)
@@ -341,79 +224,79 @@ class MotorDummy(MotorInterface):
         self.log.info('MotorDummy: Movement stopped!')
         return 0
 
-    def get_pos(self, param_list=None):
+    def get_pos(self, axes=None):
         """ Gets current position of the stage arms
 
         @param list param_list: optional, if a specific position of an axis
-                                is desired, then the labels of the needed
+                                is desired, then the names of the needed
                                 axis should be passed as the param_list.
                                 If nothing is passed, then from each axis the
                                 position is asked.
 
-        @return dict: with keys being the axis labels and item the current
+        @return dict: with keys being the axis names and item the current
                       position.
         """
         pos = {}
         if param_list is not None:
-            if self._x_axis.label in param_list:
-                pos[self._x_axis.label] = self._x_axis.pos
+            if self._x_axis.name in param_list:
+                pos[self._x_axis.name] = self._x_axis.pos
 
-            if self._y_axis.label in param_list:
-                pos[self._y_axis.label] = self._y_axis.pos
+            if self._y_axis.name in param_list:
+                pos[self._y_axis.name] = self._y_axis.pos
 
-            if self._z_axis.label in param_list:
-                pos[self._z_axis.label] = self._z_axis.pos
+            if self._z_axis.name in param_list:
+                pos[self._z_axis.name] = self._z_axis.pos
 
-            if self._phi_axis.label in param_list:
-                pos[self._phi_axis.label] = self._phi_axis.pos
+            if self._phi_axis.name in param_list:
+                pos[self._phi_axis.name] = self._phi_axis.pos
 
         else:
-            pos[self._x_axis.label] = self._x_axis.pos
-            pos[self._y_axis.label] = self._y_axis.pos
-            pos[self._z_axis.label] = self._z_axis.pos
-            pos[self._phi_axis.label] = self._phi_axis.pos
+            pos[self._x_axis.name] = self._x_axis.pos
+            pos[self._y_axis.name] = self._y_axis.pos
+            pos[self._z_axis.name] = self._z_axis.pos
+            pos[self._phi_axis.name] = self._phi_axis.pos
 
         return pos
 
-    def get_status(self, param_list=None):
+    def get_status(self, axes=None):
         """ Get the status of the position
 
         @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
+                                is desired, then the names of the needed
                                 axis should be passed in the param_list.
                                 If nothing is passed, then from each axis the
                                 status is asked.
 
-        @return dict: with the axis label as key and the status number as item.
+        @return dict: with the axis name as key and the status number as item.
         """
 
         status = {}
         if param_list is not None:
-            if self._x_axis.label in param_list:
-                status[self._x_axis.label] = self._x_axis.status
+            if self._x_axis.name in param_list:
+                status[self._x_axis.name] = self._x_axis.status
 
-            if self._y_axis.label in param_list:
-                status[self._y_axis.label] = self._y_axis.status
+            if self._y_axis.name in param_list:
+                status[self._y_axis.name] = self._y_axis.status
 
-            if self._z_axis.label in param_list:
-                status[self._z_axis.label] = self._z_axis.status
+            if self._z_axis.name in param_list:
+                status[self._z_axis.name] = self._z_axis.status
 
-            if self._phi_axis.label in param_list:
-                status[self._phi_axis.label] = self._phi_axis.status
+            if self._phi_axis.name in param_list:
+                status[self._phi_axis.name] = self._phi_axis.status
 
         else:
-            status[self._x_axis.label] = self._x_axis.status
-            status[self._y_axis.label] = self._y_axis.status
-            status[self._z_axis.label] = self._z_axis.status
-            status[self._phi_axis.label] = self._phi_axis.status
+            status[self._x_axis.name] = self._x_axis.status
+            status[self._y_axis.name] = self._y_axis.status
+            status[self._z_axis.name] = self._z_axis.status
+            status[self._phi_axis.name] = self._phi_axis.status
 
         return status
 
-    def calibrate(self, param_list=None):
+    def home(self, axes=None):
         """ Calibrates the stage.
 
         @param dict param_list: param_list: optional, if a specific calibration
-                                of an axis is desired, then the labels of the
+                                of an axis is desired, then the names of the
                                 needed axis should be passed in the param_list.
                                 If nothing is passed, then all connected axis
                                 will be calibrated.
@@ -425,16 +308,16 @@ class MotorDummy(MotorInterface):
         different for each stage.
         """
         if param_list is not None:
-            if self._x_axis.label in param_list:
+            if self._x_axis.name in param_list:
                 self._x_axis.pos = 0.0
 
-            if self._y_axis.label in param_list:
+            if self._y_axis.name in param_list:
                 self._y_axis.pos = 0.0
 
-            if self._z_axis.label in param_list:
+            if self._z_axis.name in param_list:
                 self._z_axis.pos = 0.0
 
-            if self._phi_axis.label in param_list:
+            if self._phi_axis.name in param_list:
                 self._phi_axis.pos = 0.0
 
         else:
@@ -449,29 +332,29 @@ class MotorDummy(MotorInterface):
         """ Gets the current velocity for all connected axes.
 
         @param dict param_list: optional, if a specific velocity of an axis
-                                is desired, then the labels of the needed
+                                is desired, then the names of the needed
                                 axis should be passed as the param_list.
                                 If nothing is passed, then from each axis the
                                 velocity is asked.
 
-        @return dict : with the axis label as key and the velocity as item.
+        @return dict : with the axis name as key and the velocity as item.
         """
         vel = {}
         if param_list is not None:
-            if self._x_axis.label in param_list:
-                vel[self._x_axis.label] = self._x_axis.vel
-            if self._y_axis.label in param_list:
-                vel[self._x_axis.label] = self._y_axis.vel
-            if self._z_axis.label in param_list:
-                vel[self._x_axis.label] = self._z_axis.vel
-            if self._phi_axis.label in param_list:
-                vel[self._phi_axis.label] = self._phi_axis.vel
+            if self._x_axis.name in param_list:
+                vel[self._x_axis.name] = self._x_axis.vel
+            if self._y_axis.name in param_list:
+                vel[self._x_axis.name] = self._y_axis.vel
+            if self._z_axis.name in param_list:
+                vel[self._x_axis.name] = self._z_axis.vel
+            if self._phi_axis.name in param_list:
+                vel[self._phi_axis.name] = self._phi_axis.vel
 
         else:
-            vel[self._x_axis.label] = self._x_axis.vel
-            vel[self._y_axis.label] = self._y_axis.vel
-            vel[self._z_axis.label] = self._z_axis.vel
-            vel[self._phi_axis.label] = self._phi_axis.vel
+            vel[self._x_axis.name] = self._x_axis.vel
+            vel[self._y_axis.name] = self._y_axis.vel
+            vel[self._z_axis.name] = self._z_axis.vel
+            vel[self._phi_axis.name] = self._phi_axis.vel
 
         return vel
 
@@ -480,63 +363,63 @@ class MotorDummy(MotorInterface):
 
         @param dict param_dict: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
-                                 {'axis_label': <the-velocity-value>}.
-                                 'axis_label' must correspond to a label given
+                                 {'axis_name': <the-velocity-value>}.
+                                 'axis_name' must correspond to a name given
                                  to one of the axis.
         """
         constraints = self.get_constraints()
 
-        if param_dict.get(self._x_axis.label) is not None:
-            desired_vel = param_dict[self._x_axis.label]
-            constr = constraints[self._x_axis.label]
+        if param_dict.get(self._x_axis.name) is not None:
+            desired_vel = param_dict[self._x_axis.name]
+            constr = constraints[self._x_axis.name]
 
             if not(constr['vel_min'] <= desired_vel <= constr['vel_max']):
                 self.log.warning('Cannot set velocity of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._x_axis.label, desired_vel,
+                            self._x_axis.name, desired_vel,
                             constr['vel_min'],
                             constr['vel_max']))
             else:
                 self._x_axis.vel = desired_vel
 
-        if param_dict.get(self._y_axis.label) is not None:
-            desired_vel = param_dict[self._y_axis.label]
-            constr = constraints[self._y_axis.label]
+        if param_dict.get(self._y_axis.name) is not None:
+            desired_vel = param_dict[self._y_axis.name]
+            constr = constraints[self._y_axis.name]
 
             if not(constr['vel_min'] <= desired_vel <= constr['vel_max']):
                 self.log.warning('Cannot set velocity of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._y_axis.label, desired_vel,
+                            self._y_axis.name, desired_vel,
                             constr['vel_min'],
                             constr['vel_max']))
             else:
                 self._y_axis.vel = desired_vel
 
-        if param_dict.get(self._z_axis.label) is not None:
-            desired_vel = param_dict[self._z_axis.label]
-            constr = constraints[self._z_axis.label]
+        if param_dict.get(self._z_axis.name) is not None:
+            desired_vel = param_dict[self._z_axis.name]
+            constr = constraints[self._z_axis.name]
 
             if not(constr['vel_min'] <= desired_vel <= constr['vel_max']):
                 self.log.warning('Cannot set velocity of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._z_axis.label, desired_vel,
+                            self._z_axis.name, desired_vel,
                             constr['pos_min'],
                             constr['pos_max']))
             else:
                 self._z_axis.vel = desired_vel
 
-        if param_dict.get(self._phi_axis.label) is not None:
-            desired_vel = param_dict[self._phi_axis.label]
-            constr = constraints[self._phi_axis.label]
+        if param_dict.get(self._phi_axis.name) is not None:
+            desired_vel = param_dict[self._phi_axis.name]
+            constr = constraints[self._phi_axis.name]
 
             if not(constr['vel_min'] <= desired_vel <= constr['vel_max']):
                 self.log.warning('Cannot set velocity of the axis '
                         '"{0}" to possition {1}, since it exceeds the limits '
                         '[{2},{3}] ! Command is ignored!'.format(
-                            self._phi_axis.label, desired_vel,
+                            self._phi_axis.name, desired_vel,
                             constr['pos_min'],
                             constr['pos_max']))
             else:

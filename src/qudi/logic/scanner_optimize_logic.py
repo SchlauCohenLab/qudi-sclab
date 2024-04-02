@@ -34,7 +34,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
 
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanner_interface import ScanData
 
 
 class ScannerOptimizeLogic(LogicBase):

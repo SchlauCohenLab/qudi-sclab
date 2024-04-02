@@ -320,6 +320,10 @@ class InStreamDummy(DataInStreamInterface):
         """ Read-only property returning the constraints on the settings for this data streamer. """
         return self._constraints
 
+    def get_constraints(self):
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        return self._constraints
+
     @property
     def available_samples(self) -> int:
         """ Read-only property to return the currently available number of samples per channel ready
