@@ -24,8 +24,8 @@ __all__ = ['ScanDockWidget']
 
 from PySide2 import QtWidgets
 from typing import Optional, Tuple, Sequence, Union
-from qudi.gui.scanning.scan_widget import Scan2DWidget, Scan1DWidget
-from qudi.interface.scanning_probe_interface import ScannerAxis, ScannerChannel
+from qudi.gui.scanner.scan_widget import Scan2DWidget, Scan1DWidget
+from qudi.interface.scanner_interface import ScannerAxis, ScannerChannel
 
 
 class ScanDockWidget(QtWidgets.QDockWidget):

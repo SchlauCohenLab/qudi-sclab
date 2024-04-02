@@ -32,7 +32,6 @@ from qudi.interface.slow_counter_interface import SlowCounterInterface, Counting
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
 from qudi.util.mutex import RecursiveMutex, Mutex
-from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
 import ctypes as ct
 
