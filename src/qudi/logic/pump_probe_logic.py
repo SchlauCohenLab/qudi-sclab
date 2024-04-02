@@ -25,10 +25,11 @@ class PumpProbeLogic(LogicBase):
         self._mutex = Mutex()  # Mutex for access serialization
 
     def on_activate(self):
-
-
+        pass
 
     def on_deactivate(self):
+        pass
 
     @property
     def delay_range(self):
+        pass
