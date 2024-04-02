@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ['NewportMotor']
+__all__ = ['Newport8742Series']
 
 import time
 from collections import OrderedDict
-import visa
-from qudi.interface.motor_interface import MotorInterface
+from pylablib.devices import Newport
+from qudi.interface.actuator_interface import MotorInterface
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
@@ -35,40 +35,32 @@ STATUS_dict = {
     '47': "TRACKING from TRACKING",
 }
 
-class NewportMotor(MotorInterface):
+class Newport8742Series(MotorInterface):
     """
-    Module for the CONEX controller for Agilis stages sold by Newport.
+    Module for the picomotor Controller Kit Four-Axis (8742-4-KIT) sold by Newport.
 
     The controller takes commands of the form xxAAnn over a serial connection,
     where xx is the controller address and nn can be a value to be set or a question mark
     to get the value or it can be missing.
 
-
     Example config for copy-paste:
 
-    newport_conex:
-        module.Class: 'motor.motor_newport_conex.MotorNewportConex'
-        axis:
-            x1:
-                port: 'COM5'
-                adress: '01'
-                unit: 'm'
-            x2:
-                port: 'COM7'
-                adress: '01'
-                unit: 'm'
-            y1:
-                port: 'COM8'
-                adress: '01'
-                unit: 'm'
-            y2:
-                port: 'COM9'
-                adress: '01'
-                unit: 'm'
+    newport_8742_series:
+        module.Class: 'actuator.newport_8742_series.Newport8742Series'
+        options:
+            devices:
+                device_1:
+                    port: 'COM1'
+                    axis_labels: ['x1', 'y1', 'z1', 'phi1']
+                    axis_units: ['um', 'um', 'um', 'theta']
+                device_2:
+                    port: 'COM2'
+                    axis_labels: ['x2', 'y2', 'z2', 'phi2']
+                    axis_units: ['um', 'um', 'um', 'theta']
 
     """
 
-    _axis = ConfigOption('axis', missing='error')
+    _devices = ConfigOption('devices', missing='error')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -77,7 +69,10 @@ class NewportMotor(MotorInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._rm = visa.ResourceManager()
+
+        self._instr = []
+        for port in self._devices:
+            self._instr.append(Newport.Picomotor8742())
 
         self._devices = {}
         for label, configs in self._axis.items():
@@ -89,14 +84,11 @@ class NewportMotor(MotorInterface):
 
             self.write(label, 'OR')
 
-        return 0
-
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
         for label, configs in self._axis.items():
             self._devices[label].close()
-        return 0
 
     def query(self, axis_label, command):
         """
@@ -121,7 +113,7 @@ class NewportMotor(MotorInterface):
         device.write("{}{}?".format(adress, command))
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
+        """ Retrieve the hardware constrains from the actuator device.
 
         @return dict: dict with constraints for the sequence generation and GUI
 
@@ -231,7 +223,7 @@ class NewportMotor(MotorInterface):
         return status_dict
 
     def calibrate(self, param_list=None):
-        """ Calibrates the rotation motor
+        """ Calibrates the rotation actuator
 
         @param list param_list: Dictionary with axis name
 

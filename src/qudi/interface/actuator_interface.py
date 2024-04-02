@@ -1,22 +1,166 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ['MotorInterface']
+__all__ = ['ActuatorInterface']
 
 from abc import abstractmethod
+from PySide2 import QtCore
 
 from qudi.core.module import Base
+from enum import Enum
+import datetime
+import numpy as np
 
+class AxisStatus(Enum):
+    OK = 0
+    ERROR = -1
 
-class MotorInterface(Base):
-    """ This is the Interface class to define the controls for the simple
-        step motor device. The actual hardware implementation might have a
+class Axis:
+    """
+    """
+
+    def __init__(self, name, unit='', value_range=(-np.inf, np.inf), step_range=(0, np.inf),
+                 resolution_range=(1, np.inf), frequency_range=(0, np.inf), velocity_range=(0, np.inf)):
+
+        if not isinstance(name, str):
+            raise TypeError('Parameter "name" must be of type str.')
+        if name == '':
+            raise ValueError('Parameter "name" must be non-empty str.')
+        if not isinstance(unit, str):
+            raise TypeError('Parameter "unit" must be of type str.')
+        if not (len(value_range) == len(step_range) == len(resolution_range) == len(
+                frequency_range) == 2):
+            raise ValueError('Range parameters must be iterables of length 2')
+
+        self._name = name
+        self._unit = unit
+        self._resolution_range = (int(min(resolution_range)), int(max(resolution_range))) #TODO np.inf cannot be casted as an int
+        self._step_range = (float(min(step_range)), float(max(step_range)))
+        self._value_range = (float(min(value_range)), float(max(value_range)))
+        self._frequency_range = (float(min(frequency_range)), float(max(frequency_range)))
+        self._velocity_range = (float(min(velocity_range)), float(max(velocity_range)))
+
+    def __eq__(self, other):
+        if not isinstance(other, Axis):
+            raise NotImplemented
+        attrs = ('_name',
+                 '_unit',
+                 '_resolution_range',
+                 '_step_range',
+                 '_value_range',
+                 '_frequency_range',
+                 '_velocity',
+                 )
+        return all(getattr(self, a) == getattr(other, a) for a in attrs)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def unit(self):
+        return self._unit
+
+    @property
+    def resolution_range(self):
+        return self._resolution_range
+
+    @property
+    def min_resolution(self):
+        return self._resolution_range[0]
+
+    @property
+    def max_resolution(self):
+        return self._resolution_range[1]
+
+    @property
+    def step_range(self):
+        return self._step_range
+
+    @property
+    def min_step(self):
+        return self._step_range[0]
+
+    @property
+    def max_step(self):
+        return self._step_range[1]
+
+    @property
+    def value_range(self):
+        return self._value_range
+
+    @property
+    def min_value(self):
+        return self._value_range[0]
+
+    @property
+    def max_value(self):
+        return self._value_range[1]
+
+    @property
+    def frequency_range(self):
+        return self._frequency_range
+
+    @property
+    def min_frequency(self):
+        return self._frequency_range[0]
+
+    @property
+    def max_frequency(self):
+        return self._frequency_range[1]
+
+    @property
+    def velocity(self):
+        return self._velocity
+
+    @velocity.setter
+    def velocity(self, velocity):
+        if not isinstance(velocity, float):
+            raise TypeError('Parameter "velocity" must be of type float.')
+        self._velocity = velocity
+
+    def clip_value(self, value):
+        if value < self.min_value:
+            return self.min_value
+        elif value > self.max_value:
+            return self.max_value
+        return value
+
+    def clip_resolution(self, res):
+        if res < self.min_resolution:
+            return self.min_resolution
+        elif res > self.max_resolution:
+            return self.max_resolution
+        return res
+
+    def clip_frequency(self, freq):
+        if freq < self.min_frequency:
+            return self.min_frequency
+        elif freq > self.max_frequency:
+            return self.max_frequency
+        return freq
+
+    def to_dict(self):
+        dict_repr = {'name': self._name,
+                     'unit': self._unit,
+                     'value_range': self._value_range,
+                     'step_range': self._step_range,
+                     'resolution_range': self._resolution_range,
+                     'frequency_range': self._frequency_range}
+        return dict_repr
+
+    @classmethod
+    def from_dict(cls, dict_repr):
+        return Axis(**dict_repr)
+
+class ActuatorInterface(Base):
+    """ This is the Interface class to control an actuator device. The actual hardware implementation might have a
         different amount of axis. Implement each single axis as 'private'
         methods for the hardware class, which get called by the general method.
     """
 
     @abstractmethod
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
+        """ Retrieve the hardware constrains from the actuator device.
 
         @return dict: dict with constraints for the magnet hardware. These
                       constraints will be passed via the logic to the GUI so
@@ -78,7 +222,7 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def move_rel(self,  param_dict):
+    def move_rel(self,  axes_displacement):
         """ Moves stage in given direction (relative movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
@@ -94,7 +238,7 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def move_abs(self, param_dict):
+    def move_abs(self, axes_position):
         """ Moves stage to absolute position (absolute movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
@@ -108,15 +252,7 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def abort(self):
-        """ Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
-        """
-        pass
-
-    @abstractmethod
-    def get_pos(self, param_list=None):
+    def get_pos(self, axes=None):
         """ Gets current position of the stage arms
 
         @param list param_list: optional, if a specific position of an axis
@@ -131,21 +267,15 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def get_status(self, param_list=None):
-        """ Get the status of the position
+    def abort(self, axes=None):
+        """ Stops movement of the stage
 
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-        @return dict: with the axis label as key and the status number as item.
+        @return int: error code (0:OK, -1:error)
         """
         pass
 
     @abstractmethod
-    def calibrate(self, param_list=None):
+    def home(self, axes=None):
         """ Calibrates the stage.
 
         @param dict param_list: param_list: optional, if a specific calibration
@@ -163,29 +293,15 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def get_velocity(self, param_list=None):
-        """ Gets the current velocity for all connected axes.
+    def get_status(self, axes=None):
+        """ Get the status of the position
 
-        @param dict param_list: optional, if a specific velocity of an axis
+        @param list param_list: optional, if a specific status of an axis
                                 is desired, then the labels of the needed
-                                axis should be passed as the param_list.
+                                axis should be passed in the param_list.
                                 If nothing is passed, then from each axis the
-                                velocity is asked.
+                                status is asked.
 
-        @return dict : with the axis label as key and the velocity as item.
-        """
-        pass
-
-    @abstractmethod
-    def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-velocity-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-
-        @return int: error code (0:OK, -1:error)
+        @return dict: with the axis label as key and the status number as item.
         """
         pass

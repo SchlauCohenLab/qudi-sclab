@@ -11,7 +11,7 @@ class FastCounterInterface(Base):
     """ Interface class to define the controls for fast counting devices.
 
     A "fast counter" is a hardware device that count events with a "good" time resolution.
-    The goal is generally to detect when events happen after an time defining trigger. These events can be photons
+    The goal is generally to detect when events happen after a time defining trigger. These events can be photons
     arrival on a detector for example, and the trigger the start of the acquisition.
     This type of hardware regularly records millions of repeated acquisition (ie sweeps) in a few seconds,
     with one or multiple events per trigger (depending on the hardware constrains).

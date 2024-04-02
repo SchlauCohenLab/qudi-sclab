@@ -12,7 +12,6 @@ import numpy as np
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 
-
 class TimeTagger(FastCounterInterface, SlowCounterInterface):
     """ Hardware class to controls a Time Tagger from Swabian Instruments.
 
@@ -55,7 +54,7 @@ class TimeTagger(FastCounterInterface, SlowCounterInterface):
         else:
             self._channel_apd = self._channel_apd_0
 
-        self.log.info('TimeTagger (fast counter) configured to use  channel {0}'
+        self.log.info('TimeTagger (fast counter) configured to use channel {0}'
                       .format(self._channel_apd))
 
         self.statusvar = 0
@@ -133,7 +132,7 @@ class TimeTagger(FastCounterInterface, SlowCounterInterface):
                     number_of_gates: the number of gated, which are accepted
         """
         self._number_of_gates = number_of_gates
-        self._bin_width = bin_width_s * 1e9
+        self._bin_width = bin_width_s
         self._record_length = 1 + int(record_length_s / bin_width_s)
         self.statusvar = 1
 
@@ -157,7 +156,6 @@ class TimeTagger(FastCounterInterface, SlowCounterInterface):
         self.pulsed.clear()
         self.pulsed.start()
         self.statusvar = 2
-        return 0
 
     def stop_measure(self):
         """ Stop the fast counter. """
@@ -165,7 +163,6 @@ class TimeTagger(FastCounterInterface, SlowCounterInterface):
             self.pulsed.stop()
             self.module_state.unlock()
         self.statusvar = 1
-        return 0
 
     def pause_measure(self):
         """ Pauses the current measurement.
@@ -175,7 +172,6 @@ class TimeTagger(FastCounterInterface, SlowCounterInterface):
         if self.module_state() == 'locked':
             self.pulsed.stop()
             self.statusvar = 3
-        return 0
 
     def continue_measure(self):
         """ Continues the current measurement.
@@ -185,7 +181,6 @@ class TimeTagger(FastCounterInterface, SlowCounterInterface):
         if self.module_state() == 'locked':
             self.pulsed.start()
             self.statusvar = 2
-        return 0
 
     def is_gated(self):
         """ Check the gated counting possibility.
