@@ -41,7 +41,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
 from qudi.util.units import ScaledFloat
 
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanner_interface import ScanData
 
 
 class ScannerDataLogic(LogicBase):

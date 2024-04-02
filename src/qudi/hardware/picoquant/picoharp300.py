@@ -583,10 +583,11 @@ class PicoHarp300(FastCounterInterface):
                         ns.
 
         """
-        self._dll.PH_GetHistogram.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32]
-        chcount = np.zeros((self.HISTCHAN,), dtype=np.uint32)
+        #self._dll.PH_GetHistogram.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32]
+        chcount = np.empty(self.HISTCHAN, dtype=np.uint32)
         # buf.ctypes.data is the reference to the array in the memory.
-        self.check(self._dll.PH_GetHistogram(self._deviceID, chcount.ctypes.data, block))
+        chcount_c = chcount.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
+        self.check(self._dll.PH_GetHistogram(self._deviceID, chcount_c, block))
         if xdata:
             xbuf = np.arange(self.HISTCHAN) * self.get_resolution() / 1000
             return xbuf, chcount
@@ -794,7 +795,7 @@ class PicoHarp300(FastCounterInterface):
         self.check(self._dll.PH_SetMarkerEnable(self._deviceID, me0,
                                                 me1, me2, me3))
 
-    def tttr_set_marker_holdofftime(self, holfofftime):
+    def tttr_set_marker_holdofftime(self, holdofftime):
         """ Set the holdofftime for the markers.
 
         @param int holdofftime: holdofftime in ns. Maximal value is HOLDOFFMAX.
@@ -1157,7 +1158,7 @@ class PicoHarp300(FastCounterInterface):
         """
         Starts the fast counter.
         """
-        self.lock()
+#        self.lock()
 
         self.meas_run = True
 
