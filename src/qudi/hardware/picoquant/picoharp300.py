@@ -736,15 +736,13 @@ class PicoHarp300(FastCounterInterface):
         #     If it is zero, the record marks an overflow.
         #     If it is >=1 the individual bits are external markers.
 
-        num_counts = self.TTREADMAX
-
-        buffer = np.zeros((num_counts,), dtype=np.uint32)
+        buffer = np.empty(self.TTREADMAX, dtype=np.uint32)
+        # buf.ctypes.data is the reference to the array in the memory.
+        buffer_c = buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
 
         actual_num_counts = ctypes.c_int32()
 
-        self.check(self._dll.PH_ReadFiFo(self._deviceID, buffer.ctypes.data,
-                                         num_counts, ctypes.byref(actual_num_counts)))
-
+        self.check(self._dll.PH_ReadFiFo(self._deviceID, buffer_c, self.TTREADMAX, ctypes.byref(actual_num_counts)))
 
         return buffer, actual_num_counts.value
 
@@ -812,9 +810,9 @@ class PicoHarp300(FastCounterInterface):
             self.log.error('PicoHarp: Holdofftime could not be set.\n'
                            'Value of holdofftime must be within the range '
                            '[0,{0}], but a value of {1} was passed.'
-                           ''.format(self.HOLDOFFMAX, holfofftime))
+                           ''.format(self.HOLDOFFMAX, holdofftime))
         else:
-            self.check(self._dll.PH_SetMarkerHoldofftime(self._deviceID, holfofftime))
+            self.check(self._dll.PH_SetMarkerHoldofftime(self._deviceID, holdofftime))
 
     # =========================================================================
     #  Special functions for Routing Devices
@@ -835,8 +833,8 @@ class PicoHarp300(FastCounterInterface):
     def set_enable_routing(self, use_router):
         """ Configure whether the connected router is used or not.
 
-        @param int use_router: 0 = enable routing
-                               1 = disable routing
+        @param int use_router: 0 = disable routing
+                               1 = enable routing
 
         Note: This function can also be used to detect the presence of a router!
         """
@@ -851,7 +849,7 @@ class PicoHarp300(FastCounterInterface):
         """
         # pointer to a buffer for at least 8 characters:
         model_number = ctypes.create_string_buffer(16)
-        version_number =  ctypes.create_string_buffer(16)
+        version_number = ctypes.create_string_buffer(16)
 
         self.check(self._dll.PH_GetRouterVersion(self._deviceID,
                                                  ctypes.byref(model_number),
@@ -859,7 +857,7 @@ class PicoHarp300(FastCounterInterface):
 
         return [model_number.value.decode(), version_number.value.decode()]
 
-    def set_routing_channel_offset(self, offset_time):
+    def set_routing_channel_offset(self, channel, offset_time):
         """ Set the offset for the routed channels to compensate cable delay.
 
         @param int offset_time: offset (time shift) in ps for that channel.
@@ -872,6 +870,12 @@ class PicoHarp300(FastCounterInterface):
               is relatively small. A positive number corresponds to inserting
               cable in that channel.
         """
+        channel = int(channel)
+
+        if channel not in range(0, 4):
+            self.log.error('PicoHarp: Invalid channel for routing.\n'
+                           'The channel must be within the interval [0,3], but a value '
+                           'of {0} was passed.'.format(channel))
 
         if not(self.OFFSETMIN <= offset_time <= self.OFFSETMAX):
             self.log.error('PicoHarp: Invalid offset time for routing.\nThe '
@@ -880,7 +884,7 @@ class PicoHarp300(FastCounterInterface):
                            ''.format(self.OFFSETMIN, self.OFFSETMAX, offset_time))
             return
         else:
-            self.check(self._dll.PH_SetRoutingChannelOffset(self._deviceID, offset_time))
+            self.check(self._dll.PH_SetRoutingChannelOffset(self._deviceID, channel, offset_time))
 
     def set_phr800_input(self, channel, level, edge=0):
         """ Configure the input channels of the PHR800 device.
@@ -1158,7 +1162,7 @@ class PicoHarp300(FastCounterInterface):
         """
         Starts the fast counter.
         """
-#        self.lock()
+        self.module_state.lock()
 
         self.meas_run = True
 
@@ -1184,7 +1188,7 @@ class PicoHarp300(FastCounterInterface):
 
         if not self.meas_run:
             with self.threadlock:
-                self.unlock()
+                self.module_state.unlock()
                 self.stop_device()
                 return
 

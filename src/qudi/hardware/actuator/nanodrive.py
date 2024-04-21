@@ -102,7 +102,7 @@ class NanoDrive(ActuatorInterface):
                 self.log.error('An error occured when retrieving the axes range.')
             else:
                 self._axes[axis] = Axis(axis, 'm', (0, int(axis_range)*1e-6), step_range=(0, np.inf),
-                     resolution_range=(0, 100), frequency_range=(0, 1e3), velocity_range=(0, np.inf))
+                     resolution_range=(0, 100000), frequency_range=(0, 1e3), velocity_range=(0, np.inf))
 
 
     def on_deactivate(self):

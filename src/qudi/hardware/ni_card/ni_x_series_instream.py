@@ -93,10 +93,11 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
         options:
             device_name: 'Dev1'
             digital_sources:  # optional
-                - 'PFI15'
+                'acceptor': 'PFI0'
+                'donor': 'PFI12'
             analog_sources:  # optional
-                - 'ai0'
-                - 'ai1'
+                'x': 'ai0'
+                'y': 'ai1'
             # external_sample_clock_source: 'PFI0'  # optional
             # external_sample_clock_frequency: 1000  # optional
             adc_voltage_range: [-10, 10]  # optional
@@ -108,8 +109,8 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
 
     # config options
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
-    _digital_sources = ConfigOption(name='digital_sources', default=tuple(), missing='info')
-    _analog_sources = ConfigOption(name='analog_sources', default=tuple(), missing='info')
+    _digital_sources = ConfigOption(name='digital_sources', default=dict(), missing='info')
+    _analog_sources = ConfigOption(name='analog_sources', default=dict(), missing='info')
     _external_sample_clock_source = ConfigOption(name='external_sample_clock_source',
                                                  default=None,
                                                  missing='nothing')
@@ -185,7 +186,7 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
 
         # Check digital input terminals
         if self._digital_sources:
-            source_set = set(self._extract_terminal(src) for src in self._digital_sources)
+            source_set = set(self._extract_terminal(src) for src in self._digital_sources.values())
             invalid_sources = source_set.difference(set(self.__all_digital_terminals))
             if invalid_sources:
                 self.log.error(
@@ -193,18 +194,26 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
                     'be ignored:\n  {0}\nValid digital input terminals are:\n  {1}'
                     ''.format(', '.join(natural_sort(invalid_sources)),
                               ', '.join(self.__all_digital_terminals)))
-            self._digital_sources = natural_sort(source_set.difference(invalid_sources))
+            valid_digital_src = natural_sort(source_set.difference(invalid_sources))
+            channels, sources = self._digital_sources.items()
+            for ch, src in (channels, sources):
+                if src not in valid_digital_src:
+                    self._digital_sources.pop(ch)
 
-        # Check analog input channels
+                # Check analog input channels
         if self._analog_sources:
-            source_set = set(self._extract_terminal(src) for src in self._analog_sources)
+            source_set = set(self._extract_terminal(src) for src in self._analog_sources.values())
             invalid_sources = source_set.difference(set(self.__all_analog_terminals))
             if invalid_sources:
                 self.log.error('Invalid analog source channels encountered. Following sources will '
                                'be ignored:\n  {0}\nValid analog input channels are:\n  {1}'
                                ''.format(', '.join(natural_sort(invalid_sources)),
                                          ', '.join(self.__all_analog_terminals)))
-            self._analog_sources = natural_sort(source_set.difference(invalid_sources))
+            valid_analog_src = natural_sort(source_set.difference(invalid_sources))
+            channels, sources = self._analog_sources.items()
+            for ch, src in (channels, sources):
+                if src not in valid_analog_src:
+                    self._analog_sources.pop(ch)
 
         # Check if all input channels fit in the device
         if len(self._digital_sources) > 3:
@@ -224,8 +233,8 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
             )
 
         # Create constraints
-        channel_units = {chnl: 'counts/s' for chnl in self._digital_sources}
-        channel_units.update({chnl: 'V' for chnl in self._analog_sources})
+        channel_units = {chnl: 'counts/s' for chnl in self._digital_sources.keys()}
+        channel_units.update({chnl: 'V' for chnl in self._analog_sources.keys()})
         self._constraints = DataInStreamConstraints(
             channel_units=channel_units,
             sample_timing=SampleTiming.CONSTANT,
@@ -244,7 +253,7 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
         )
 
         self._channels = dict()
-        for ch in self._digital_sources:
+        for ch, src in self._digital_sources.items():
             self._channels[ch] = Channel(ch, unit=channel_units[ch],
                                      dtype=np.float64,
                                      streaming_mode=StreamingMode.CONTINUOUS, buffer_size=ScalarConstraint(default=1024**2,
@@ -257,7 +266,7 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
                                          increment=1,
                                          enforce_int=False), bin_width=None)
 
-        for ch in self._analog_sources:
+        for ch, src in self._analog_sources.items():
             self._channels[ch] = Channel(ch, unit=channel_units[ch],
                                      dtype=np.float64,
                                      streaming_mode=StreamingMode.CONTINUOUS, buffer_size=ScalarConstraint(default=1024**2,
@@ -742,7 +751,7 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
     def _init_digital_tasks(self):
         """ Set up tasks for digital event counting. """
         all_channels = list(self._constraints.channel_units)
-        digital_channels = [ch for ch in all_channels[:len(self._digital_sources)] if
+        digital_channels = [self._digital_sources[ch] for ch in all_channels[:len(self._digital_sources)] if
                             ch in self.__active_channels]
         if digital_channels:
             if self._di_task_handles:

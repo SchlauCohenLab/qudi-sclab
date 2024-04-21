@@ -182,8 +182,8 @@ class ScanData:
         if not all(isinstance(ch, Channel) for ch in channels):
             raise TypeError(
                 'Parameter "channels" must be iterable containing only Channel objects.')
-        if not all(np.issubdtype(ch.dtype, np.floating) for ch in channels):
-            raise TypeError('channel dtypes must be either builtin or numpy floating types')
+        # if not all(np.issubdtype(ch.dtype, np.floating) for ch in channels):
+        #     raise TypeError('channel dtypes must be either builtin or numpy floating types')
 
         self._scan_axes = tuple(scan_axes)
         self._scan_range = tuple((float(start), float(stop)) for (start, stop) in scan_range)
@@ -562,9 +562,17 @@ class ScanConstraints:
     def axes(self):
         return self._axes.copy()
 
+    @axes.setter
+    def axes(self, axes):
+        self._axes = {ax.name: ax for ax in axes}
+
     @property
     def channels(self):
         return self._channels.copy()
+
+    @channels.setter
+    def channels(self, channels):
+        self._channels = {ch.name: ch for ch in channels}
 
     @property
     def backscan_configurable(self):  # TODO Incorporate in gui/logic toolchain?

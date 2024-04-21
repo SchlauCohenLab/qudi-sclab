@@ -77,11 +77,14 @@ class ScannerInterfuse(ScannerInterface):
 
         self._thread_lock = RecursiveMutex()
 
+        self._advanced_scan_channels = None
+        self._advanced_scan_function = None
+        self._advanced_scan = False
+
     def on_activate(self):
         """ Activate the module and fill status variables.
         """
         self._scan_channels = self._detector().get_constraints()
-        self._active_channels = [ch.name for ch in self._scan_channels]
         self._scan_axes = self._actuator().get_constraints()
 
         self._position_ranges = {ax.name:ax.value_range for ax in self._scan_axes}
@@ -92,9 +95,6 @@ class ScannerInterfuse(ScannerInterface):
                                             square_px_only=False)
 
         self._target_pos = self._actuator().get_pos()
-
-        self.scan_point_function = None
-        self.scan_point_channels = None
 
         self._sigStartScanning.connect(self._scan_point, QtCore.Qt.QueuedConnection)
         # self._start_scanning_timer = QtCore.QTimer()
@@ -150,7 +150,7 @@ class ScannerInterfuse(ScannerInterface):
                                               altered ScanSettings instance (same as "settings")
                 """
         with self._thread_lock:
-            if self.module_state()=='locked':
+            if self.module_state() == 'locked':
                 self.log.error('Unable to configure scan parameters while scan is running. '
                                'Stop scanning and try again.')
                 return True, self.scan_settings
@@ -191,8 +191,12 @@ class ScannerInterfuse(ScannerInterface):
                         return True, self.scan_settings
 
                 try:
+                    if self._advanced_scan:
+                        channels = tuple(self._advanced_scan_channels)
+                    else:
+                        channels = tuple(self._constraints.channels.values())
                     self._scan_data = ScanData(
-                        channels=tuple(self._constraints.channels.values()),
+                        channels=channels,
                         scan_axes=tuple(self._constraints.axes[ax] for ax in axes),
                         scan_range=ranges,
                         scan_resolution=tuple(resolution),
@@ -204,7 +208,6 @@ class ScannerInterfuse(ScannerInterface):
                                                                    1] if self._scan_data.scan_dimension == 2 else 1,
                                                                resolution[0],
                                                                self.__backwards_line_resolution)
-
                     # self.log.debug(f"New scanData created: {self._scan_data.data}")
 
                 except:
@@ -232,7 +235,10 @@ class ScannerInterfuse(ScannerInterface):
                 self.log.error('Cannot move the scanner while, scan is running')
                 return self._target_pos
 
-            self._target_pos = position
+            for axis in self._scan_axes:
+                if axis.name in position.keys():
+                    self._target_pos[axis.name] = position[axis.name]
+
             self._actuator().move_abs(position)
             return self._target_pos
 
@@ -251,7 +257,10 @@ class ScannerInterfuse(ScannerInterface):
                 self.log.error('Cannot move the scanner while, scan is running')
                 return self._target_pos
 
-            self._target_pos = distance
+            for axis in self._scan_axes:
+                if axis.name in distance.keys():
+                    self._target_pos[axis.name] = distance[axis.name]
+
             self._actuator().move_rel(distance)
             return self._target_pos
 
@@ -302,6 +311,22 @@ class ScannerInterfuse(ScannerInterface):
                                        in zip(self.scan_settings['axes'], self.scan_settings['range'])}
 
                 self._actuator().move_abs(first_scan_position)
+
+                target_pos_vec = self._pos_dict_to_vec(self._target_pos)
+
+                self.log.info("A")
+                # Terminate follow loop if target is reached
+                while True:
+                    self.log.info("A")
+                    current_pos_vec = self._pos_dict_to_vec(self.get_position())
+                    connecting_vec = target_pos_vec - current_pos_vec
+                    distance_to_target = np.linalg.norm(connecting_vec)
+                    time.sleep(int(round(1 / self._current_scan_frequency)))
+                    if distance_to_target < self._scanner_distance_atol:
+                        self.log.info("B")
+                        self._actuator().move_abs(first_scan_position)
+                        break
+                self.log.info("C")
                 self._sigStartScanning.emit()
 
             except Exception:
@@ -340,6 +365,7 @@ class ScannerInterfuse(ScannerInterface):
 
                 self._horizontal_path = h_path.flatten()
                 self._vertical_path = v_path.flatten()
+
     def _scan_point(self):
         """ Scans a line and returns the counts on that line.
 
@@ -349,21 +375,10 @@ class ScannerInterfuse(ScannerInterface):
         @return float[]: the photon counts per second
         """
         with self._thread_lock:
+            self.log.info("F")
             if self.module_state() != 'locked':
                 return
-
-            if self._pointer == 0:
-                current_pos_vec = self._pos_dict_to_vec(self.get_position())
-
-                target_pos_vec = self._pos_dict_to_vec(self._target_pos)
-                connecting_vec = target_pos_vec - current_pos_vec
-                distance_to_target = np.linalg.norm(connecting_vec)
-
-                # Terminate follow loop if target is reached
-                if distance_to_target > self._scanner_distance_atol:
-                    self._sigStartScanning.emit()
-                    return
-
+            self.log.info("G")
             if self._scan_data.scan_dimension == 1:
 
                 if self._pointer >= len(self._horizontal_path):
@@ -385,8 +400,8 @@ class ScannerInterfuse(ScannerInterface):
 
             self._actuator().move_abs(position)
             time.sleep(int(round(1 / self._current_scan_frequency)))
-            if self.scan_point_function:
-                data = self.scan_point_function(point_index=i, point_position=position)
+            if self._advanced_scan:
+                data = self._advanced_scan_function(pointer=self._pointer)
             else:
                 data = self._detector().get_data()
 
@@ -453,7 +468,7 @@ class ScannerInterfuse(ScannerInterface):
         pos_list = [el[1] for el in sorted(position.items())]
         return np.asarray(pos_list)
 
-    def set_advanced_acquisition(self, scan_point_function=None, scan_point_channels=None):
+    def config_advanced_scan(self, scan_function, scan_channels):
         """ Set the function to use at each point of the scan and the function giving the related channels name.
 
         @param (function) scan_point_function : function taking in argument the scanning index and position and returning
@@ -462,9 +477,18 @@ class ScannerInterfuse(ScannerInterface):
         returned by scan_point_function.
 
         """
+        with self._thread_lock:
+            self._advanced_scan_function = scan_function
+            self._advanced_scan_channels = scan_channels
+            self._advanced_scan = True
 
-        self.scan_point_function = scan_point_function
-        self.scan_point_channels = scan_point_channels
+    @property
+    def advanced_scan(self):
+        return self._advanced_scan
+
+    @advanced_scan.setter
+    def advanced_scan(self, advanced_scan):
+        self._advanced_scan = advanced_scan
 
 class RawDataContainer:
 
@@ -512,7 +536,3 @@ class RawDataContainer:
         returns number of not NaN samples
         """
         return np.sum(~np.isnan(next(iter(self._raw.values()))))
-
-    @property
-    def is_full(self):
-        return self.number_of_non_nan_values == self.frame_size
