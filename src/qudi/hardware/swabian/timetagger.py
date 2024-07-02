@@ -5,19 +5,18 @@ __all__ = ['TimeTagger']
 import time
 
 from qudi.interface.fast_counter_interface import FastCounterInterface
-from qudi.interface.slow_counter_interface import SlowCounterInterface, SlowCounterConstraints, CountingMode
 from qudi.core.statusvariable import StatusVar
 import TimeTagger as tt
 import numpy as np
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 
-class TimeTagger(FastCounterInterface, SlowCounterInterface):
+class TimeTagger(FastCounterInterface):
     """ Hardware class to controls a Time Tagger from Swabian Instruments.
 
     Example config for copy-paste:
 
-    fastcounter_timetagger:
+    timetagger:
         module.Class: 'swabian_instruments.timetagger_fast_counter.TimeTaggerFastCounter'
         options:
             timetagger_channel_apd_0: 0

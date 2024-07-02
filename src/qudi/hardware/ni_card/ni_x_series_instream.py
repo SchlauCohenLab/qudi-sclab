@@ -195,8 +195,8 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
                     ''.format(', '.join(natural_sort(invalid_sources)),
                               ', '.join(self.__all_digital_terminals)))
             valid_digital_src = natural_sort(source_set.difference(invalid_sources))
-            channels, sources = self._digital_sources.items()
-            for ch, src in (channels, sources):
+            d_src = self._digital_sources.copy()
+            for ch, src in d_src.items():
                 if src not in valid_digital_src:
                     self._digital_sources.pop(ch)
 
@@ -210,8 +210,8 @@ class NIXSeriesInStreamer(DataInStreamInterface, DetectorInterface):
                                ''.format(', '.join(natural_sort(invalid_sources)),
                                          ', '.join(self.__all_analog_terminals)))
             valid_analog_src = natural_sort(source_set.difference(invalid_sources))
-            channels, sources = self._analog_sources.items()
-            for ch, src in (channels, sources):
+            a_src = self._analog_sources.copy()
+            for ch, src in a_src.items():
                 if src not in valid_analog_src:
                     self._analog_sources.pop(ch)
 

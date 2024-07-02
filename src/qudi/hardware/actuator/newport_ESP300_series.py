@@ -5,7 +5,7 @@ __all__ = ['NewportMotor']
 import time
 from collections import OrderedDict
 import visa
-from qudi.interface.actuator_interface import MotorInterface
+from qudi.interface.actuator_interface import ActuatorInterface
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex

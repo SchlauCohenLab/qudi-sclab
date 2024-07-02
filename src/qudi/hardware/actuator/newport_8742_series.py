@@ -5,10 +5,11 @@ __all__ = ['Newport8742Series']
 import time
 from collections import OrderedDict
 from pylablib.devices import Newport
-from qudi.interface.actuator_interface import MotorInterface
+from qudi.interface.actuator_interface import ActuatorInterface, Axis, AxisStatus
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
+import numpy as np
 
 STATUS_dict = {
     '0A': "NOT REFERENCED from RESET.",
@@ -35,7 +36,7 @@ STATUS_dict = {
     '47': "TRACKING from TRACKING",
 }
 
-class Newport8742Series(MotorInterface):
+class Newport8742Series(ActuatorInterface):
     """
     Module for the picomotor Controller Kit Four-Axis (8742-4-KIT) sold by Newport.
 
@@ -66,23 +67,26 @@ class Newport8742Series(MotorInterface):
         super().__init__(*args, **kwargs)
         self._mutex = Mutex()
 
+        self._axes = dict()
+
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
+        """
+        Initialisation performed during activation of the module.
         """
 
         self._instr = []
+        self._axes = dict()
         for port in self._devices:
+
             self._instr.append(Newport.Picomotor8742())
 
-        self._devices = {}
-        for label, configs in self._axis.items():
-            device = self._rm.open_resource(configs["port"])
-            device.baud_rate = 921600
-            device.read_termination = "\r\n"
 
-            self._devices[label] = device
-
-            self.write(label, 'OR')
+            for label, configs in self._axis.items():
+                Axis(label, configs["unit"], (float(self.query(label, "SL")) * 1e-3,
+                                              float(self.query(label, "SR")) * 1e-3),
+                    step_range = (float(self.query(label, "SU")) * 1e-3, np.inf),
+                    velocity_range=(0, float(self.query(label, "VA")) * 1e-3),
+                    resolution_range = (0, 100000), frequency_range = (0, 1e3))
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -113,14 +117,9 @@ class Newport8742Series(MotorInterface):
         device.write("{}{}?".format(adress, command))
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the actuator device.
+        """ Get hardware constraints/limitations.
 
-        @return dict: dict with constraints for the sequence generation and GUI
-
-        Provides all the constraints for the xyz stage  and rot stage (like total
-        movement, velocity, ...)
-        Each constraint is a tuple of the form
-            (min_value, max_value, stepsize)
+        @return dict: scanner constraints
         """
         constraints = OrderedDict()
 
@@ -146,12 +145,18 @@ class Newport8742Series(MotorInterface):
 
         return constraints
 
-    def move_rel(self, param_dict):
-        """Moves stage by a given angle (relative movement)
+    def move_rel(self, axes_displacement):
+        """ Moves stage in given direction (relative movement)
 
-        @param dict param_dict: Dictionary with axis name and relative movement in units
+        @param dict param_dict: dictionary, which passes all the relevant
+                                parameters, which should be changed. Usage:
+                                 {'axis_label': <the-abs-pos-value>}.
+                                 'axis_label' must correspond to a label given
+                                 to one of the axis.
 
-        @return dict: Dictionary with axis name and final position in units
+        A smart idea would be to ask the position after the movement.
+
+        @return int: error code (0:OK, -1:error)
         """
         pos_dict = {}
         for label, pos in param_dict.items():
@@ -161,12 +166,16 @@ class Newport8742Series(MotorInterface):
 
         return pos_dict
 
-    def move_abs(self, param_dict):
-        """Moves stage to an absolute angle (absolute movement)
+    def move_abs(self, axes_position):
+        """ Moves stage to absolute position (absolute movement)
 
-        @param dict param_dict: Dictionary with axis name and target position in deg
+        @param dict param_dict: dictionary, which passes all the relevant
+                                parameters, which should be changed. Usage:
+                                 {'axis_label': <the-abs-pos-value>}.
+                                 'axis_label' must correspond to a label given
+                                 to one of the axis.
 
-        @return dict velocity: Dictionary with axis name and final position in deg
+        @return int: error code (0:OK, -1:error)
         """
         pos_dict = {}
         for label, pos in param_dict.items():
