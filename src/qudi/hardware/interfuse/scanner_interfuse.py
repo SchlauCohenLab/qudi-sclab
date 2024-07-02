@@ -314,19 +314,16 @@ class ScannerInterfuse(ScannerInterface):
 
                 target_pos_vec = self._pos_dict_to_vec(self._target_pos)
 
-                self.log.info("A")
                 # Terminate follow loop if target is reached
-                while True:
-                    self.log.info("A")
-                    current_pos_vec = self._pos_dict_to_vec(self.get_position())
-                    connecting_vec = target_pos_vec - current_pos_vec
-                    distance_to_target = np.linalg.norm(connecting_vec)
-                    time.sleep(int(round(1 / self._current_scan_frequency)))
-                    if distance_to_target < self._scanner_distance_atol:
-                        self.log.info("B")
-                        self._actuator().move_abs(first_scan_position)
-                        break
-                self.log.info("C")
+                # while True:
+                #     current_pos_vec = self._pos_dict_to_vec(self.get_position())
+                #     connecting_vec = target_pos_vec - current_pos_vec
+                #     distance_to_target = np.linalg.norm(connecting_vec)
+                #     time.sleep(int(round(1 / self._current_scan_frequency)))
+                #     if distance_to_target < self._scanner_distance_atol:
+                #         self._actuator().move_abs(first_scan_position)
+                #         break
+
                 self._sigStartScanning.emit()
 
             except Exception:
