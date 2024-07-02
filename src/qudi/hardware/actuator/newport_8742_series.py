@@ -4,7 +4,7 @@ __all__ = ['Newport8742Series']
 
 import time
 from collections import OrderedDict
-from pylablib.devices import Newport
+import pyvisa
 from qudi.interface.actuator_interface import ActuatorInterface, Axis, AxisStatus
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
@@ -49,19 +49,15 @@ class Newport8742Series(ActuatorInterface):
     newport_8742_series:
         module.Class: 'actuator.newport_8742_series.Newport8742Series'
         options:
-            devices:
-                device_1:
-                    port: 'COM1'
-                    axis_labels: ['x1', 'y1', 'z1', 'phi1']
-                    axis_units: ['um', 'um', 'um', 'theta']
-                device_2:
-                    port: 'COM2'
-                    axis_labels: ['x2', 'y2', 'z2', 'phi2']
-                    axis_units: ['um', 'um', 'um', 'theta']
+            port: 'USB0::0x104D::0x4000::12345678::RAW'
+            axis_labels: ['x1']
+            axis_units: ['um']
 
     """
 
-    _devices = ConfigOption('devices', missing='error')
+    _port = ConfigOption('port', missing='error')
+    _axis_labels = ConfigOption('axis_labels', missing='error')
+    _axis_units = ConfigOption('axis_units', missing='error')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,6 +69,13 @@ class Newport8742Series(ActuatorInterface):
         """
         Initialisation performed during activation of the module.
         """
+        self._rm = pyvisa.ResourceManager()
+
+        self._device = self._rm.open_resource(self._port)
+        self._device.baud_rate = 921600
+        self._device.read_termination = "\r\n"
+
+        self.write(label, 'OR')
 
         self._instr = []
         self._axes = dict()
