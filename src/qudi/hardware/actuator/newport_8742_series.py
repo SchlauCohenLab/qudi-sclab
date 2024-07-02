@@ -108,16 +108,13 @@ class Newport8742Series(ActuatorInterface):
         adress = self._axis[axis_label]['adress']
         return device.query("{}{}?".format(adress, command)).split(command)[1]
 
-    def write(self, axis_label, command):
+    def write(self, command):
         """
 
-        :param axis_label:
         :param command:
         :return:
         """
-        device = self._devices[axis_label]
-        adress = self._axis[axis_label]['adress']
-        device.write("{}{}?".format(adress, command))
+        self._device.write("{}{}?".format(adress, command))
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
