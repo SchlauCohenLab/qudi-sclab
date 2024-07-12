@@ -54,10 +54,12 @@ class NewportActuator(ActuatorInterface):
             axes:
                 x1:
                     axis: 0
-                    unit: um
+                    step: 30e-9
+                    unit: m
                 x2:
                     axis: 1
-                    unit: um
+                    unit: m
+                    step: 30e-9
 
     """
 
@@ -80,17 +82,18 @@ class NewportActuator(ActuatorInterface):
         self._device = self._rm.open_resource(self._port)
         self._device.baud_rate = self._baud_rate
         self._device.read_termination = "\r\n"
+        self._device.write_termination = "\r"
 
         self._axes = {}
         for axis, cfg in self._axes_cfg.items():
 
-            self.write(cfg['axis'], 'OR')
+            #self.write(axis, 'OR')
 
-            self._axes[axis] = Axis(axis, cfg["unit"], (float(self.query(axis, "SL")) * 1e-3,
-                                          float(self.query(axis, "SR")) * 1e-3),
-                step_range = (float(self.query(axis, "SU")) * 1e-3, np.inf),
-                velocity_range=(0, float(self.query(axis, "VA")) * 1e-3),
-                resolution_range = (0, 100000), frequency_range = (0, 1e3))
+            self._axes[axis] = Axis(axis, cfg["unit"], (-2147483648 * cfg["step"], 2147483647 * cfg["step"]),
+                step_range = (-2147483648, +2147483647),
+                velocity_range=(0, float(self.query(axis, "VA")) * cfg["step"]),
+                resolution_range = (1, 100000),
+                frequency_range = (0, 1e3))
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -105,7 +108,7 @@ class NewportActuator(ActuatorInterface):
         :return:
         """
         adress = self._axes_cfg[axis_label]['axis']
-        return self._device.query("{}{}?".format(adress, command)).split(command)[1]
+        return self._device.query("0{}{}?".format(adress, command))#.split(command)[1]
 
     def write(self, axis_label, command):
         """
@@ -114,7 +117,7 @@ class NewportActuator(ActuatorInterface):
         :return:
         """
         adress = self._axes_cfg[axis_label]['axis']
-        self._device.write("{}{}?".format(adress, command))
+        self._device.write("0{}{}?".format(adress, command))
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -138,9 +141,9 @@ class NewportActuator(ActuatorInterface):
         """
         pos_dict = {}
         for axis, dis in axes_displacement.items():
-            command = "PR{}".format(float(dis) * 1e3)
+            command = "PR{}".format(int(dis/self._axes_cfg[axis]['step']))
             self.write(axis, command)
-            pos_dict[axis] = float(self.query(axis, "TH")) * 1e-3
+            pos_dict[axis] = float(self.query(axis, "TP")) * self._axes_cfg[axis]['step']
 
         return pos_dict
 
@@ -157,9 +160,9 @@ class NewportActuator(ActuatorInterface):
         """
         pos_dict = {}
         for axis, dis in axes_position.items():
-            command = "PA{}".format(float(dis) * 1e3)
+            command = "PA{}".format(int(dis/self._axes_cfg[axis]['step']))
             self.write(axis, command)
-            pos_dict[axis] = float(self.query(axis, "TH")) * 1e-3
+            pos_dict[axis] = float(self.query(axis, "TP")) * self._axes_cfg[axis]['step']
 
         return pos_dict
 
@@ -183,7 +186,7 @@ class NewportActuator(ActuatorInterface):
         if axes is None:
             axes = self._axes.keys()
         for axis in axes:
-            pos[axis] = float(self.query(axis, "TP")) * 1e-3
+            pos[axis] = float(self.query(axis, "TP")) * self._axes_cfg[axis]['step']
 
         return pos
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ['MotorLogic']
+__all__ = ['ActuatorLogic']
 
 from PySide2 import QtCore
 
@@ -11,20 +11,20 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 
 # qudi logic measurement modules must inherit qudi.core.module.LogicBase or other logic modules.
-class MotorLogic(LogicBase):
-    """ Logic module for interacting with the hardware motors.
-    This logic has the same structure as the MotorInterface but supplies additional functionality:
-        - motors can either be manipulated by index or by their names
+class ActuatorLogic(LogicBase):
+    """ Logic module for interacting with the hardware actuators.
+    This logic has the same structure as the ActuatorInterface but supplies additional functionality:
+        - actuators can either be manipulated by index or by their names
         - signals are generated on state changes
 
-    motor_logic:
-        module.Class: 'motor_logic.MotorLogic'
+    actuator_logic:
+        module.Class: 'actuator_logic.ActuatorLogic'
         connect:
             actuator: actuator
     """
 
-    # connector for one actuator, if multiple motors are needed use the MotorCombinerInterfuse
-    motor = Connector(interface='MotorInterface')
+    # connector for one actuator, if multiple actuators are needed use the ActuatorCombinerInterfuse
+    actuator = Connector(interface='ActuatorInterface')
 
     _scan_min = StatusVar('scan_min', default={})
     _scan_max = StatusVar('scan_max', default={})
@@ -44,17 +44,8 @@ class MotorLogic(LogicBase):
     def on_activate(self):
         """ Activate module
         """
-        self._constraints = self.motor().get_constraints()
-        self._actual_position = self.motor().get_pos()
-        self._axes = [axis for axis in self._constraints.keys()]
-        for axis in self._axes:
-            if axis not in self._scan_min.keys():
-                self._scan_min[axis] = self._constraints[axis]['pos_min']
-            if axis not in self._scan_min.keys():
-                self._scan_max[axis] = self._constraints[axis]['pos_max']
-            if axis not in self._scan_step.keys():
-                self._scan_step[axis] = self._constraints[axis]['pos_step']
-
+        self._axes = self.actuator().get_constraints()
+        self._actual_position = self.actuator().get_pos()
 
         self.sigStartScanning.connect(self._start_scanning)
 
@@ -65,7 +56,7 @@ class MotorLogic(LogicBase):
 
     def _start_scanning(self, axis):
 
-        if self._position[axis] <= self._scan_max[axis]:
+        if self._position[axis] <= self._axes:
             return
         self.move_rel(self._scan_step[axis])
         self.sigStartScanning.emit(axis)
@@ -81,7 +72,7 @@ class MotorLogic(LogicBase):
 
     @property
     def status(self):
-        return self.motor().get_status()
+        return self.actuator().get_status()
 
     @property
     def axes(self):
@@ -106,9 +97,9 @@ class MotorLogic(LogicBase):
                 self.log.error("{} axis : the displacement is outside the allowed range.".format(axis))
                 return
 
-        self.motor().move_abs(axes_displacement)
+        self.actuator().move_abs(axes_displacement)
 
-        return self.motor().get_pos()
+        return self.actuator().get_pos()
 
     def move_rel(self, axes_displacement):
         """ Relative displacement of the actuator axis.
@@ -129,23 +120,23 @@ class MotorLogic(LogicBase):
                 self.log.error("{} axis : the displacement is outside the allowed range.".format(axis))
                 return
 
-        self.motor().move_rel(axes_displacement)
+        self.actuator().move_rel(axes_displacement)
 
-        return self.motor().get_pos()
+        return self.actuator().get_pos()
 
     def get_position(self, axes_list):
         """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
-        return self.motor().get_pos(axes_list)
+        return self.actuator().get_pos(axes_list)
 
     def get_status(self, axes_list):
         """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
-        return self.motor().get_status(axes_list)
+        return self.actuator().get_status(axes_list)
 
     @property
     def status(self):
@@ -153,14 +144,14 @@ class MotorLogic(LogicBase):
 
         @return dict pos: Dictionary with axis name and current position
         """
-        return self.motor().get_status()
+        return self.actuator().get_status()
 
     def home(self, axes_list):
         """ Current position of the actuator axis.
 
         @return dict pos: Dictionary with axis name and current position
         """
-        return self.motor().calibrate(axes_list)
+        return self.actuator().calibrate(axes_list)
 
     @property
     def position(self):
@@ -168,7 +159,7 @@ class MotorLogic(LogicBase):
 
         @return dict pos: Dictionary with axis name and current position
         """
-        return self.motor().get_pos()
+        return self.actuator().get_pos()
 
     @property
     def scan_min(self):
@@ -230,7 +221,7 @@ class MotorLogic(LogicBase):
 
         @return dict velocity: Dictionary with axis name and current velocity
         """
-        return self.motor().get_velocity()
+        return self.actuator().get_velocity()
 
     @velocity.setter
     def velocity(self, velocity):
@@ -243,9 +234,9 @@ class MotorLogic(LogicBase):
         if not isinstance(velocity, dict):
             self.log.error("The input parameter is not a dictionary.")
         current_vel = self.velocity
-        for axis in self.motor().get_axis():
+        for axis in self.actuator().get_axis():
             vel_min, vel_max = self._constraints[axis]['vel_min'], self._constraints[axis]['vel_max']
             if not (vel_min <= current_vel[axis]+velocity[axis] <= vel_max):
                 self.log.error("{} axis : the velocity is outside the allowed range.".format(axis))
-        self.motor().set_velocity(velocity)
-        return self.motor().get_velocity()
+        self.actuator().set_velocity(velocity)
+        return self.actuator().get_velocity()

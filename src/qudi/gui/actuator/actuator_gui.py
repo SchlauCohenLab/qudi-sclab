@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['MotorGui']
+__all__ = ['ActuatorGui']
 
 from enum import IntEnum
 from PySide2 import QtWidgets, QtCore, QtGui
@@ -54,21 +54,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setMinimumSize(300, 200)
         return
 
-class MotorGui(GuiBase):
+class ActuatorGui(GuiBase):
     """
     A graphical interface to control the actuator displacement.
 
     Example config for copy-paste:
 
     motor_gui:
-        module.Class: 'actuator.motor_gui.MotorGui'
+        module.Class: 'actuator.actuator_gui.ActuatorGui'
         connect:
-            motor_logic: 'motor_logic'
+            actuator_logic: actuator_logic
 
     """
 
     # declare connectors
-    motor_logic = Connector(interface='MotorLogic')
+    actuator_logic = Connector(interface='ActuatorLogic')
 
     # declare status variables
     _axes_displacement = ConfigOption(name='axes_displacement', default={})
@@ -83,10 +83,10 @@ class MotorGui(GuiBase):
         """ Create all UI objects and show the window.
         """
         self._mw = MainWindow()
-        self._constraints = self.motor_logic().constraints
+        self._constraints = self.actuator_logic().constraints
 
         self.axes_widgets = {}
-        for axis in self.motor_logic().axes:
+        for axis in self.actuator_logic().axes:
             axis_widget = AxisDockWidget(axis)
             axis_widget.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
             self.axes_widgets[axis] = axis_widget
@@ -123,7 +123,7 @@ class MotorGui(GuiBase):
         self.axes_widgets[axis].displacement_sb.setValue(self._axes_displacement[axis])
         self.axes_widgets[axis].displacement_sb.setSuffix(self._constraints[axis]['unit'])
 
-        self.axes_widgets[axis].position_value.setText("{:.2r}{}".format(ScaledFloat(self.motor_logic().get_position([axis])[axis]),
+        self.axes_widgets[axis].position_value.setText("{:.2r}{}".format(ScaledFloat(self.actuator_logic().get_position([axis])[axis]),
                                                                      self._constraints[axis]['unit']))
 
         self.axes_widgets[axis].abs_displacement.clicked.connect(lambda: self._update_radio_btn(axis, True))
@@ -142,11 +142,11 @@ class MotorGui(GuiBase):
         self._update_position_timer.timeout.connect(self._update_position_value, QtCore.Qt.QueuedConnection)
         self._update_position_timer.start(10)
 
-        #self.axes_widgets[axis].scan_btn.clicked.connect(lambda: self.motor_logic().start_scan(axis))
+        #self.axes_widgets[axis].scan_btn.clicked.connect(lambda: self.actuator_logic().start_scan(axis))
 
     def _update_radio_btn(self, axis, absolute):
 
-        position = self.motor_logic().get_position([axis])[axis]
+        position = self.actuator_logic().get_position([axis])[axis]
         if absolute:
             self.axes_widgets[axis].rel_displacement.setChecked(False)
             self.axes_widgets[axis].abs_displacement.setChecked(True)
@@ -163,7 +163,7 @@ class MotorGui(GuiBase):
 
     def _update_axis_status(self):
 
-        axes_status = self.motor_logic().status
+        axes_status = self.actuator_logic().status
         for axis, status in axes_status.items():
             if status == 0:
                 self.axes_widgets[axis].axis_status.setText("Idle")
@@ -172,7 +172,7 @@ class MotorGui(GuiBase):
 
     def _update_position_value(self):
 
-        axes_position = self.motor_logic().position
+        axes_position = self.actuator_logic().position
         for axis, pos in axes_position.items():
             self.axes_widgets[axis].position_value.setText("{:.2r}{}".format(ScaledFloat(pos), self._constraints[axis]['unit']))
 
@@ -182,13 +182,13 @@ class MotorGui(GuiBase):
 
     def _home_axis(self, axis):
 
-        self.motor_logic().home([axis])
+        self.actuator_logic().home([axis])
 
     def _move_axis(self, axis):
 
         displacement = self.axes_widgets[axis].displacement_sb.value()
         self._axes_displacement[axis] = displacement
         if self._abs_displacement[axis]:
-            self.motor_logic().move_abs({axis: displacement})
+            self.actuator_logic().move_abs({axis: displacement})
         else:
-            self.motor_logic().move_rel({axis: displacement})
+            self.actuator_logic().move_rel({axis: displacement})
