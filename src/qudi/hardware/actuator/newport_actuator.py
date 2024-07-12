@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ['Newport874xSeries']
+__all__ = ['NewportActuator']
 
 import time
 from collections import OrderedDict
@@ -46,8 +46,8 @@ class NewportActuator(ActuatorInterface):
 
     Example config for copy-paste:
 
-    newport_8743_series:
-        module.Class: 'actuator.newport_actuator.NewportActuator'
+     newport_8743_series:
+        module.Class: 'actuator.newport_874x_series.Newport874xSeries'
         options:
             baud_rate: 921600
             port: 'USB0::0x104D::0x4000::12345678::RAW'
@@ -61,9 +61,9 @@ class NewportActuator(ActuatorInterface):
 
     """
 
+    _baud_rate = ConfigOption('baud_rate', default=921600)
     _port = ConfigOption('port', missing='error')
     _axes_cfg = ConfigOption('axes', missing='error')
-    _baud_rate = ConfigOption('baud_rate', default=921600)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
