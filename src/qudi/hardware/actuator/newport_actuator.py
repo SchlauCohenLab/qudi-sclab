@@ -36,7 +36,7 @@ STATUS_dict = {
     '47': "TRACKING from TRACKING",
 }
 
-class Newport874xSeries(ActuatorInterface):
+class NewportActuator(ActuatorInterface):
     """
     Module for the picomotor Controller Kit Four-Axis (8742-4-KIT) sold by Newport.
 
@@ -47,8 +47,9 @@ class Newport874xSeries(ActuatorInterface):
     Example config for copy-paste:
 
     newport_8743_series:
-        module.Class: 'actuator.newport_874x_series.Newport874xSeries'
+        module.Class: 'actuator.newport_actuator.NewportActuator'
         options:
+            baud_rate: 921600
             port: 'USB0::0x104D::0x4000::12345678::RAW'
             axes:
                 x1:
@@ -62,6 +63,7 @@ class Newport874xSeries(ActuatorInterface):
 
     _port = ConfigOption('port', missing='error')
     _axes_cfg = ConfigOption('axes', missing='error')
+    _baud_rate = ConfigOption('baud_rate', default=921600)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -76,7 +78,7 @@ class Newport874xSeries(ActuatorInterface):
         self._rm = pyvisa.ResourceManager()
 
         self._device = self._rm.open_resource(self._port)
-        self._device.baud_rate = 921600
+        self._device.baud_rate = self._baud_rate
         self._device.read_termination = "\r\n"
 
         self._axes = {}

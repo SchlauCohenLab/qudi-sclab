@@ -5,7 +5,8 @@ __all__ = ['NewportMotor']
 import time
 from collections import OrderedDict
 import visa
-from qudi.interface.actuator_interface import ActuatorInterface
+import numpy as np
+from qudi.interface.actuator_interface import ActuatorInterface, Axis, AxisStatus
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
@@ -35,7 +36,7 @@ STATUS_dict = {
     '47': "TRACKING from TRACKING",
 }
 
-class NewportMotor(MotorInterface):
+class NewportESP300Series(ActuatorInterface):
     """
     Module for the CONEX controller for Agilis stages sold by Newport.
 
@@ -47,52 +48,51 @@ class NewportMotor(MotorInterface):
     Example config for copy-paste:
 
     newport_conex:
-        module.Class: 'actuator.motor_newport_conex.MotorNewportConex'
+        module.Class: 'actuator.newport_ESP300_series.NewportESP300Series'
         options:
-            axis:
+            port: 'USB0::0x104D::0x4000::12345678::RAW'
+            axes:
                 x1:
-                    port: 'COM5'
-                    adress: '01'
-                    unit: 'm'
+                    axis: 0
+                    unit: um
                 x2:
-                    port: 'COM7'
-                    adress: '01'
-                    unit: 'm'
-                y1:
-                    port: 'COM8'
-                    adress: '01'
-                    unit: 'm'
-                y2:
-                    port: 'COM9'
-                    adress: '01'
-                    unit: 'm'
-
+                    axis: 1
+                    unit: um
     """
 
-    _axis = ConfigOption('axis', missing='error')
+    _port = ConfigOption('port', missing='error')
+    _axes_cfg = ConfigOption('axes', missing='error')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mutex = Mutex()
+
+        self._axes = dict()
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
         self._rm = visa.ResourceManager()
 
-        self._devices = {}
-        for label, configs in self._axis.items():
-            device = self._rm.open_resource(configs["port"])
-            device.baud_rate = 19200
-            device.read_termination = "\r\n"
+        self._device = self._rm.open_resource(self._port)
+        self._device.baud_rate = 19200
+        self._device.read_termination = "\r\n"
 
-            self._devices[label] = device
+        self._axes = {}
+        for axis, cfg in self._axes_cfg.items():
+
+            self.write(cfg['axis'], 'OR')
+
+            self._axes[axis] = Axis(axis, cfg["unit"], (float(self.query(axis, "SL")) * 1e-3,
+                                          float(self.query(axis, "SR")) * 1e-3),
+                step_range = (float(self.query(axis, "SU")) * 1e-3, np.inf),
+                velocity_range=(0, float(self.query(axis, "VA")) * 1e-3),
+                resolution_range = (0, 100000), frequency_range = (0, 1e3))
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
-        for label, configs in self._axis.items():
-            self._devices[label].close()
+        self._device.close()
 
     def query(self, axis_label, command):
         """
@@ -101,82 +101,62 @@ class NewportMotor(MotorInterface):
         :param command:
         :return:
         """
-        device = self._devices[axis_label]
-        adress = self._axis[axis_label]['adress']
-        return device.query("{}{}?".format(adress, command)).split(command)[1]
+        adress = self._axes_cfg[axis_label]['axis']
+        return self._device.query("{}{}?".format(adress, command)).split(command)[1]
 
     def write(self, axis_label, command):
         """
-
         :param axis_label:
         :param command:
         :return:
         """
-        device = self._devices[axis_label]
-        adress = self._axis[axis_label]['adress']
-        device.write("{}{}?".format(adress, command))
+        adress = self._axes_cfg[axis_label]['axis']
+        self._device.write("{}{}?".format(adress, command))
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the actuator device.
+        """ Get hardware constraints/limitations.
 
-        @return dict: dict with constraints for the sequence generation and GUI
-
-        Provides all the constraints for the xyz stage  and rot stage (like total
-        movement, velocity, ...)
-        Each constraint is a tuple of the form
-            (min_value, max_value, stepsize)
+        @return dict: scanner constraints
         """
-        constraints = OrderedDict()
+        return [axis for axis in self._axes.values()]
 
-        for label, configs in self._axis.items():
-            axis = {
-                'label': label,
-                'ID': configs["adress"],
-                'unit': configs["unit"],
-                'ramp': None,
-                'pos_min': float(self.query(label, "SL")) * 1e-3,
-                'pos_max': float(self.query(label, "SR")) * 1e-3,
-                'pos_step': float(self.query(label, "SU")) * 1e-3,
-                'vel_min': float(self.query(label, "VA")) * 1e-3,
-                'vel_max': float(self.query(label, "VA")) * 1e-3,
-                'vel_step': None,
+    def move_rel(self, axes_displacement):
+        """ Moves stage in given direction (relative movement)
 
-                'acc_min': float(self.query(label, "AC")) * 1e-3,
-                'acc_max': float(self.query(label, "AC")) * 1e-3,
-                'acc_step': None,
-            }
+        @param dict axes_displacement: dictionary, which passes all the relevant
+                                parameters, which should be changed. Usage:
+                                 {'axis_label': <the-abs-pos-value>}.
+                                 'axis_label' must correspond to a label given
+                                 to one of the axis.
 
-            constraints[label] = axis
+        A smart idea would be to ask the position after the movement.
 
-        return constraints
-
-    def move_rel(self, param_dict):
-        """Moves stage by a given angle (relative movement)
-
-        @param dict param_dict: Dictionary with axis name and relative movement in units
-
-        @return dict: Dictionary with axis name and final position in units
+        @return int: error code (0:OK, -1:error)
         """
         pos_dict = {}
-        for label, pos in param_dict.items():
-            command = "PR{}".format(param_dict[label] * 1e3)
-            self.write(label, command)
-            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
+        for axis, dis in axes_displacement.items():
+            command = "PR{}".format(float(dis) * 1e3)
+            self.write(axis, command)
+            pos_dict[axis] = float(self.query(axis, "TH")) * 1e-3
 
         return pos_dict
 
-    def move_abs(self, param_dict):
-        """Moves stage to an absolute angle (absolute movement)
+    def move_abs(self, axes_position):
+        """ Moves stage to absolute position (absolute movement)
 
-        @param dict param_dict: Dictionary with axis name and target position in deg
+        @param dict axes_position: dictionary, which passes all the relevant
+                                parameters, which should be changed. Usage:
+                                 {'axis_label': <the-abs-pos-value>}.
+                                 'axis_label' must correspond to a label given
+                                 to one of the axis.
 
-        @return dict velocity: Dictionary with axis name and final position in deg
+        @return int: error code (0:OK, -1:error)
         """
         pos_dict = {}
-        for label, pos in param_dict.items():
-            command = "PA{}".format(param_dict[label] * 1e3)
-            self.write(label, command)
-            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
+        for axis, dis in axes_position.items():
+            command = "PA{}".format(float(dis) * 1e3)
+            self.write(axis, command)
+            pos_dict[axis] = float(self.query(axis, "TH")) * 1e-3
 
         return pos_dict
 
@@ -189,22 +169,22 @@ class NewportMotor(MotorInterface):
             self.write(label, 'ST')
         return 0
 
-    def get_pos(self, param_list=None):
+    def get_pos(self, axes=None):
         """ Gets current position of the rotation stage
 
         @param list param_list: List with axis name
 
         @return dict pos: Dictionary with axis name and pos in deg
         """
-        if not param_list:
-            param_list = [label for label in self._axis.keys()]
-        pos_dict = {}
-        for label in param_list:
-            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
+        pos = {}
+        if axes is None:
+            axes = self._axes.keys()
+        for axis in axes:
+            pos[axis] = float(self.query(axis, "TP")) * 1e-3
 
-        return pos_dict
+        return pos
 
-    def get_status(self, param_list=None):
+    def get_status(self, axes=None):
         """ Get the status of the position
 
         @param list param_list: optional, if a specific status of an axis
@@ -215,60 +195,27 @@ class NewportMotor(MotorInterface):
 
         @return dict status:
         """
-        if not param_list:
-            param_list = [label for label in self._axis.keys()]
-        status_dict = {}
-        for label in param_list:
-            idx = self.query(label, "TS")[-2:]
-            status = STATUS_dict[idx]
-            self.log.debug("Newport CONEX Hardware status [axis {}] : {}".format(label, status))
-            status_dict[label] = idx == '32' or idx == '33'
+        status = {}
+        if axes is None:
+            axes = self._axes.keys()
+        for axis in axes:
+            idx = self.query(axis, "TS")[-2:]
+            self.log.debug("Newport CONEX Hardware status [axis {}] : {}".format(axis, STATUS_dict[idx]))
+            status[axis] = idx == '32' or idx == '33'
 
-        return status_dict
+        return status
 
-    def calibrate(self, param_list=None):
+    def home(self, axes=None):
         """ Calibrates the rotation actuator
 
         @param list param_list: Dictionary with axis name
 
         @return dict pos: Dictionary with axis name and pos in deg
         """
-        if not param_list:
-            param_list = [label for label in self._axis.keys()]
-        pos_dict = {}
-        for label in param_list:
-            self.write(label, "OR")
-            pos_dict[label] = float(self.query(label, "TP")) * 1e-3
-
-        return pos_dict
-
-    def get_velocity(self, param_list=None):
-        """ Asks current value for velocity.
-
-        @param list param_list: Dictionary with axis name
-
-        @return dict velocity: Dictionary with axis name and velocity in deg/s
-        """
-        if not param_list:
-            param_list = [label for label in self._axis.keys()]
-        velocity_dict = {}
-        for label in param_list:
-            velocity_dict[label] = float(self.query(label, "VA")) * 1e-3
-
-        return velocity_dict
-
-    def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: Dictionary with axis name and target velocity in deg/s
-
-        @return dict velocity: Dictionary with axis name and target velocity in deg/s
-        """
-        velocity_dict = {}
-        for label in param_dict.keys():
-            velocity_dict[label] = float(self.query(label, "VA")) * 1e-3
-
-        return velocity_dict
+        if axes is None:
+            axes = self._axes.keys()
+        for axis in axes:
+            self.write(axis, "OR")
 
     def reset(self):
         """ Reset the controller.
