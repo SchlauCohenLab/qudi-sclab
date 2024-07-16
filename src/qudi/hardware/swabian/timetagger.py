@@ -19,19 +19,22 @@ class TimeTagger(FastCounterInterface):
     timetagger:
         module.Class: 'swabian_instruments.timetagger_fast_counter.TimeTaggerFastCounter'
         options:
-            timetagger_channel_apd_0: 0
-            timetagger_channel_apd_1: 1
-            timetagger_channel_detect: 2
-            timetagger_channel_sequence: 3
-            timetagger_sum_channels: 4
+            ref:
+                channel: 1 # Hardware channel
+                level: 500e-3 # Trigger level in V
+                divider: 8 # Event divider between triggers
+            apd:
+                channel: 3 # Hardware channel
+                level: 500e-3 # Trigger level in V
+                delay: 0 # Input delay time in s
+
 
     """
 
-    _channel_apd_0 = ConfigOption('timetagger_channel_apd_0', missing='error')
-    _channel_apd_1 = ConfigOption('timetagger_channel_apd_1', missing='error')
-    _channel_detect = ConfigOption('timetagger_channel_detect', missing='error')
-    _channel_sequence = ConfigOption('timetagger_channel_sequence', missing='error')
-    _sum_channels = ConfigOption('timetagger_sum_channels', True, missing='warn')
+    _ref = ConfigOption('ref', missing='error')
+    _apd = ConfigOption('apd', missing='error')
+    _sum_channels = ConfigOption('sum_channels', False, missing='warn')
+    _mode = ConfigOption('mode', 0, missing='warn')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,22 +44,28 @@ class TimeTagger(FastCounterInterface):
         """ Connect and configure the access to the FPGA.
         """
         self._tagger = tt.createTimeTagger()
-        self._tagger.reset()
+
+        if 'level' in self._ref:
+            self._tagger.setTriggerLevel(self._ref['channel'], self._ref['level'])
+
+        if 'divider' in self._ref:
+            self._tagger.setEventDivider(self._ref['channel'], self._ref['divider'])
+
+        if 'level' in self._apd:
+            self._tagger.setTriggerLevel(self._apd['channel'], self._apd['level'])
+
+        if 'delay' in self._apd:
+            self._tagger.setDelayHardware(self._apd['channel'], self._apd['delay'])
 
         self._number_of_gates = int(100)
         self._bin_width = 1
         self._record_length = int(4000)
 
-        if self._sum_channels:
-            self._channel_combined = tt.Combiner(self._tagger, channels=[self._channel_apd_0, self._channel_apd_1])
-            self._channel_apd = self._channel_combined.getChannel()
-        else:
-            self._channel_apd = self._channel_apd_0
-
-        self.log.info('TimeTagger (fast counter) configured to use channel {0}'
-                      .format(self._channel_apd))
-
         self.statusvar = 0
+
+    def reset(self):
+        """ Reset the hardware to its initial state."""
+        self._tagger.reset()
 
     def get_constraints(self):
         """ Retrieve the hardware constrains from the Fast counting device.
@@ -108,13 +117,13 @@ class TimeTagger(FastCounterInterface):
         """ Deactivate the FPGA.
         """
         if self.module_state() == 'locked':
-            self.pulsed.stop()
-        self.pulsed.clear()
-        self.pulsed = None
+            self._stream.stop()
+        self._stream.clear()
+        self._stream = None
 
     # ================ Fast counter interface ===================
 
-    def configure(self, bin_width_s, record_length_s, number_of_gates=0):
+    def configure(self, bin_width_s, record_length_s, number_of_gates=1):
 
         """ Configuration of the fast counter.
 
@@ -135,31 +144,33 @@ class TimeTagger(FastCounterInterface):
         self._record_length = 1 + int(record_length_s / bin_width_s)
         self.statusvar = 1
 
-        self.pulsed = tt.TimeDifferences(
+        self._stream = tt.TimeDifferences(
             tagger=self._tagger,
-            click_channel=self._channel_apd,
-            start_channel=self._channel_detect,
-            next_channel=self._channel_detect,
+            click_channel=self._apd['channel'],
+            start_channel=self._ref['channel'],
+            next_channel=self._ref['channel'],
             sync_channel=tt.CHANNEL_UNUSED,
-            binwidth=int(np.round(self._bin_width * 1000)),
+            binwidth=int(np.round(self._bin_width * 1e12)),
             n_bins=int(self._record_length),
             n_histograms=number_of_gates)
 
-        self.pulsed.stop()
+        self._stream.stop()
 
         return bin_width_s, record_length_s, number_of_gates
 
     def start_measure(self):
         """ Start the fast counter. """
         self.module_state.lock()
-        self.pulsed.clear()
-        self.pulsed.start()
+
+        self._stream.clear()
+        self._stream.start()
+
         self.statusvar = 2
 
     def stop_measure(self):
         """ Stop the fast counter. """
         if self.module_state() == 'locked':
-            self.pulsed.stop()
+            self._stream.stop()
             self.module_state.unlock()
         self.statusvar = 1
 
@@ -169,7 +180,7 @@ class TimeTagger(FastCounterInterface):
         Fast counter must be initially in the run state to make it pause.
         """
         if self.module_state() == 'locked':
-            self.pulsed.stop()
+            self._stream.stop()
             self.statusvar = 3
 
     def continue_measure(self):
@@ -178,7 +189,7 @@ class TimeTagger(FastCounterInterface):
         If fast counter is in pause state, then fast counter will be continued.
         """
         if self.module_state() == 'locked':
-            self.pulsed.start()
+            self._stream.start()
             self.statusvar = 2
 
     def is_gated(self):
@@ -203,7 +214,7 @@ class TimeTagger(FastCounterInterface):
         """
         info_dict = {'elapsed_sweeps': None,
                      'elapsed_time': None}  # TODO : implement that according to hardware capabilities
-        return np.array(self.pulsed.getData(), dtype='int64'), info_dict
+        return np.array(self._stream.getData(), dtype='int64'), info_dict
 
     def get_status(self):
         """ Receives the current status of the Fast Counter and outputs it as
@@ -221,6 +232,17 @@ class TimeTagger(FastCounterInterface):
         """ Returns the width of a single timebin in the timetrace in seconds. """
         width_in_seconds = self._bin_width * 1e-9
         return width_in_seconds
+
+    # ================ Time-tag streaming ===================
+
+    def start_tt_stream(self):
+        """ Start the time-tag streaming measurement of the fast counter."""
+        self._stream = tt.TimeTagStream(self._tagger, 1e9, [self._ref['channel'], self._apd['channel']])
+
+    def get_buffer_data(self):
+        """ Receives the current timetrace data from the fast counter."""
+        data = self._stream.getData()
+        return data
 
     # ================ Slow counter interface ===================
 
