@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ['NewportActuator']
+__all__ = ['Newport8743']
 
 import time
 from collections import OrderedDict
@@ -36,7 +36,7 @@ STATUS_dict = {
     '47': "TRACKING from TRACKING",
 }
 
-class NewportActuator(ActuatorInterface):
+class Newport8743(ActuatorInterface):
     """
     Module for the picomotor Controller Kit Four-Axis (8742-4-KIT) sold by Newport.
 
@@ -49,7 +49,6 @@ class NewportActuator(ActuatorInterface):
      newport_8743_series:
         module.Class: 'actuator.newport_874x_series.Newport874xSeries'
         options:
-            baud_rate: 921600
             port: 'USB0::0x104D::0x4000::12345678::RAW'
             axes:
                 x1:
@@ -63,7 +62,7 @@ class NewportActuator(ActuatorInterface):
 
     """
 
-    _baud_rate = ConfigOption('baud_rate', default=921600)
+    _step_num = ConfigOption('step_num', default=2147483647)
     _port = ConfigOption('port', missing='error')
     _axes_cfg = ConfigOption('axes', missing='error')
 
@@ -80,7 +79,7 @@ class NewportActuator(ActuatorInterface):
         self._rm = pyvisa.ResourceManager()
 
         self._device = self._rm.open_resource(self._port)
-        self._device.baud_rate = self._baud_rate
+        self._device.baud_rate = 921600
         self._device.read_termination = "\r\n"
         self._device.write_termination = "\r"
 
@@ -89,8 +88,8 @@ class NewportActuator(ActuatorInterface):
 
             #self.write(axis, 'OR')
 
-            self._axes[axis] = Axis(axis, cfg["unit"], (-2147483648 * cfg["step"], 2147483647 * cfg["step"]),
-                step_range = (-2147483648, +2147483647),
+            self._axes[axis] = Axis(axis, cfg["unit"], (-2147483647 * cfg["step"], 2147483647 * cfg["step"]),
+                step_range = (-2147483647, +2147483647),
                 velocity_range=(0, float(self.query(axis, "VA")) * cfg["step"]),
                 resolution_range = (1, 100000),
                 frequency_range = (0, 1e3))

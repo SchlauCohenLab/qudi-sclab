@@ -10,6 +10,131 @@ import TimeTagger as tt
 import numpy as np
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
+import numba
+
+class TimeTagFilter(tt.CustomMeasurement):
+    """
+    Custom time-tag stream mode.
+    """
+
+    def __init__(self, tagger, start_channel, click_channel, acq_time, max_buffer_size=1000000):
+        tt.CustomMeasurement.__init__(self, tagger)
+        self.click_channel = click_channel
+        self.start_channel = start_channel
+        self.acq_time = acq_time
+        self.max_buffer_size = max_buffer_size
+
+        # The method register_channel(channel) activates
+        # data transmission from the Time Tagger to the PC
+        # for the respective channels.
+        self.register_channel(channel=click_channel)
+        self.register_channel(channel=start_channel)
+
+        self.clear_impl()
+
+        # At the end of a CustomMeasurement construction,
+        # we must indicate that we have finished.
+        self.finalize_init()
+
+    def __del__(self):
+        # The measurement must be stopped before deconstruction to avoid
+        # concurrent process() calls.
+        self.stop()
+
+    def getData(self):
+        # Locking this instance to guarantee that process() is not running in parallel
+        # This ensures to return a consistent data.
+        with self.mutex:
+            return self.data.copy()
+
+    def getIndex(self):
+        # This method does not depend on the internal state, so there is no
+        # need for a lock.
+        arr = np.arange(0, self.max_buffer_size)
+        return arr
+
+    def clear_impl(self):
+        # The lock is already acquired within the backend.
+        self.last_start_timestamp = 0
+        self.tag_index = 0
+        self.data = np.zeros((self.max_buffer_size,2), dtype=np.uint64)
+
+    def on_start(self):
+        # The lock is already acquired within the backend.
+        pass
+
+    def on_stop(self):
+        # The lock is already acquired within the backend.
+        pass
+
+    @staticmethod
+    @numba.jit(nopython=True, nogil=True)
+    def fast_process(
+            tags,
+            data,
+            click_channel,
+            start_channel,
+            tag_index,
+            end_time):
+        """
+        A precompiled version of the histogram algorithm for better performance
+        nopython=True: Only a subset of the python syntax is supported.
+                       Avoid everything but primitives and numpy arrays.
+                       All slow operation will yield an exception
+        nogil=True:    This method will release the global interpreter lock. So
+                       this method can run in parallel with other python code
+        """
+        i = 0
+        for tag in tags:
+            # tag.type can be: 0 - TimeTag, 1- Error, 2 - OverflowBegin, 3 -
+            # OverflowEnd, 4 - MissedEvents (you can use the TimeTagger.TagType IntEnum)
+            if tag['type'] == tt.TagType.TimeTag:
+                if tag['time'] > end_time:
+                    return True, tag_index
+                if tag['channel'] == start_channel and tags[i+1]['channel'] == click_channel:
+                    # valid event
+                    if tag_index < data.shape[0]:
+                        data[tag_index, 0] = tag['time']
+                        data[tag_index, 1] = tag['time']-tags[i+1]['time']
+                        tag_index += 1
+            i += 1
+        return False, tag_index
+
+    def process(self, incoming_tags, begin_time, end_time):
+        """
+        Main processing method for the incoming raw time-tags.
+
+        The lock is already acquired within the backend.
+        self.data is provided as reference, so it must not be accessed
+        anywhere else without locking the mutex.
+
+        Parameters
+        ----------
+        incoming_tags
+            The incoming raw time tag stream provided as a read-only reference.
+            The storage will be deallocated after this call, so you must not store a reference to
+            this object. Make a copy instead.
+            Please note that the time tag stream of all channels is passed to the process method,
+            not only the ones from register_channel(...).
+        begin_time
+            Begin timestamp of the current data block.
+        end_time
+            End timestamp of the current data block.
+        """
+        if self.tag_index == 0:
+            self.start_time = incoming_tags[0]['time']
+            self.end_time = self.start_time + self.acq_time
+
+        acq_finish, self.tag_index = TimeTagFilter.fast_process(
+            incoming_tags,
+            self.data,
+            self.click_channel,
+            self.start_channel,
+            self.tag_index,
+            self.end_time,
+        )
+
+
 
 class TimeTagger(FastCounterInterface):
     """ Hardware class to controls a Time Tagger from Swabian Instruments.
@@ -23,18 +148,17 @@ class TimeTagger(FastCounterInterface):
                 channel: 1 # Hardware channel
                 level: 500e-3 # Trigger level in V
                 divider: 8 # Event divider between triggers
+                delay: 5e-9 # Input delay time in s
             apd:
                 channel: 3 # Hardware channel
                 level: 500e-3 # Trigger level in V
-                delay: 0 # Input delay time in s
+                delay: 5e-9 # Input delay time in s
 
 
     """
 
     _ref = ConfigOption('ref', missing='error')
     _apd = ConfigOption('apd', missing='error')
-    _sum_channels = ConfigOption('sum_channels', False, missing='warn')
-    _mode = ConfigOption('mode', 0, missing='warn')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,6 +168,9 @@ class TimeTagger(FastCounterInterface):
         """ Connect and configure the access to the FPGA.
         """
         self._tagger = tt.createTimeTagger()
+        self._tagger.reset()
+        self._tagger.setConditionalFilter(trigger=[self._ref['channel']], filtered=[self._apd['channel']])
+        #self._tagger.setTimeTaggerChannelNumberScheme(tt.TT_CHANNEL_NUMBER_SCHEME_ONE)
 
         if 'level' in self._ref:
             self._tagger.setTriggerLevel(self._ref['channel'], self._ref['level'])
@@ -55,7 +182,9 @@ class TimeTagger(FastCounterInterface):
             self._tagger.setTriggerLevel(self._apd['channel'], self._apd['level'])
 
         if 'delay' in self._apd:
-            self._tagger.setDelayHardware(self._apd['channel'], self._apd['delay'])
+            self._tagger.setDelaySoftware(self._apd['channel'], int(self._apd['delay']*1e12))
+
+        self._tagger.sync()
 
         self._number_of_gates = int(100)
         self._bin_width = 1
@@ -118,8 +247,6 @@ class TimeTagger(FastCounterInterface):
         """
         if self.module_state() == 'locked':
             self._stream.stop()
-        self._stream.clear()
-        self._stream = None
 
     # ================ Fast counter interface ===================
 
@@ -144,7 +271,7 @@ class TimeTagger(FastCounterInterface):
         self._record_length = 1 + int(record_length_s / bin_width_s)
         self.statusvar = 1
 
-        self._stream = tt.TimeDifferences(
+        self._meas = tt.TimeDifferences(
             tagger=self._tagger,
             click_channel=self._apd['channel'],
             start_channel=self._ref['channel'],
@@ -154,23 +281,25 @@ class TimeTagger(FastCounterInterface):
             n_bins=int(self._record_length),
             n_histograms=number_of_gates)
 
-        self._stream.stop()
+        self._meas.stop()
 
         return bin_width_s, record_length_s, number_of_gates
 
     def start_measure(self):
         """ Start the fast counter. """
-        self.module_state.lock()
+        if self._meas:
+            self.module_state.lock()
 
-        self._stream.clear()
-        self._stream.start()
+            self._meas.start()
 
-        self.statusvar = 2
+            self.statusvar = 2
+        else:
+            self.log.warning('Measurement need to be configure before start measuring')
 
     def stop_measure(self):
         """ Stop the fast counter. """
         if self.module_state() == 'locked':
-            self._stream.stop()
+            self._meas.stop()
             self.module_state.unlock()
         self.statusvar = 1
 
@@ -180,7 +309,7 @@ class TimeTagger(FastCounterInterface):
         Fast counter must be initially in the run state to make it pause.
         """
         if self.module_state() == 'locked':
-            self._stream.stop()
+            self._meas.stop()
             self.statusvar = 3
 
     def continue_measure(self):
@@ -189,7 +318,7 @@ class TimeTagger(FastCounterInterface):
         If fast counter is in pause state, then fast counter will be continued.
         """
         if self.module_state() == 'locked':
-            self._stream.start()
+            self._meas.start()
             self.statusvar = 2
 
     def is_gated(self):
@@ -235,14 +364,31 @@ class TimeTagger(FastCounterInterface):
 
     # ================ Time-tag streaming ===================
 
-    def start_tt_stream(self):
+    def start_stream(self, filename, acq_time):
         """ Start the time-tag streaming measurement of the fast counter."""
-        self._stream = tt.TimeTagStream(self._tagger, 1e9, [self._ref['channel'], self._apd['channel']])
 
-    def get_buffer_data(self):
-        """ Receives the current timetrace data from the fast counter."""
-        data = self._stream.getData()
-        return data
+        fw = tt.FileWriter(self._tagger, filename, [self._ref['channel'], self._apd['channel']])
+        time.sleep(acq_time)
+        fw.stop()
+
+        n_events = fw.getTotalEvents()
+
+        fr = tt.FileReader(filename)
+        buffer = fr.getData(n_events)
+        timestamps = buffer.getTimestamps()
+        channels = buffer.getChannels()
+
+        self._apd['channel']
+
+        macro_time = []
+        micro_time = []
+
+        for i in range(len(timestamps)):
+            if channels[i] == self._apd['channel'] and i>0:
+                macro_time.append(timestamps[i])
+                micro_time.append(timestamps[i]-timestamps[i-1])
+
+        np.savez(filename, macro_time=np.array(macro_time), micro_time=np.array(micro_time))
 
     # ================ Slow counter interface ===================
 
