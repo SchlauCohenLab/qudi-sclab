@@ -378,17 +378,15 @@ class TimeTagger(FastCounterInterface):
         timestamps = buffer.getTimestamps()
         channels = buffer.getChannels()
 
-        self._apd['channel']
-
         macro_time = []
         micro_time = []
 
         for i in range(len(timestamps)):
-            if channels[i] == self._apd['channel'] and i>0:
+            if channels[i] == self._apd['channel'] and i > 0:
                 macro_time.append(timestamps[i])
                 micro_time.append(timestamps[i]-timestamps[i-1])
 
-        np.savez(filename, macro_time=np.array(macro_time), micro_time=np.array(micro_time))
+        return np.array(macro_time), np.array(micro_time)
 
     # ================ Slow counter interface ===================
 

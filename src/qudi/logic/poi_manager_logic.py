@@ -31,7 +31,6 @@ import time
 from datetime import datetime
 from collections import OrderedDict
 from PySide2 import QtCore
-from sdt.loc import cg
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
@@ -373,9 +372,9 @@ class PoiManagerLogic(LogicBase):
     """
 
     # declare connectors
-    _optimizelogic = Connector(name='optimize_logic', interface='ScannerOptimizeLogic')
-    _scanninglogic = Connector(name='scanning_logic', interface='ScannerLogic')
-    _data_logic = Connector(name='data_logic', interface='ScannerDataLogic')
+    _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
+    _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
+    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
 
     # config options
     _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))
@@ -386,8 +385,7 @@ class PoiManagerLogic(LogicBase):
     _active_poi = StatusVar(default=None)
     _move_scanner_after_optimization = StatusVar(default=True)
     _poi_threshold = StatusVar(default=5)
-    _poi_mass_threshold = StatusVar(default=5)
-    _poi_diameter = StatusVar(default=1)
+    _poi_diameter = StatusVar(default=100e-9)
 
     # Signals for connecting modules
     sigOptimizeStateUpdated = QtCore.Signal(bool)  # is_active
@@ -396,7 +394,6 @@ class PoiManagerLogic(LogicBase):
     sigActivePoiUpdated = QtCore.Signal(str)
     sigRoiUpdated = QtCore.Signal(dict)  # Dict containing ROI parameters to update
     sigThresholdUpdated = QtCore.Signal(float)
-    sigMassThresholdUpdated = QtCore.Signal(float)
     sigDiameterUpdated = QtCore.Signal(float)
 
     # Internal signals
@@ -544,25 +541,15 @@ class PoiManagerLogic(LogicBase):
     def poi_threshold(self):
         return float(self._poi_threshold)
 
-    @property
-    def poi_mass_threshold(self):
-        return float(self._poi_mass_threshold)
-
     @poi_threshold.setter
     def poi_threshold(self, new_threshold):
         with self._thread_lock:
             self.set_poi_threshold(new_threshold)
             return
 
-    @poi_mass_threshold.setter
-    def poi_mass_threshold(self, new_mass_threshold):
-        with self._thread_lock:
-            self.set_poi_mass_threshold(new_mass_threshold)
-            return
-
     @property
     def poi_diameter(self):
-        return int(self._poi_diameter)
+        return float(self._poi_diameter)
 
     @poi_diameter.setter
     def poi_diameter(self, new_diameter):
@@ -925,21 +912,16 @@ class PoiManagerLogic(LogicBase):
     @QtCore.Slot(float)
     def set_poi_threshold(self, threshold):
         with self._thread_lock:
+            if not threshold > 1:
+                self.log.error('threshold must > 1!')
             self._poi_threshold = float(threshold)
             self.sigThresholdUpdated.emit(threshold)
             return
 
     @QtCore.Slot(float)
-    def set_poi_mass_threshold(self, mass_threshold):
-        with self._thread_lock:
-            self._poi_mass_threshold = float(mass_threshold)
-            self.sigMassThresholdUpdated.emit(mass_threshold)
-            return
-
-    @QtCore.Slot(float)
     def set_poi_diameter(self, diameter):
         with self._thread_lock:
-            self._poi_diameter = int(diameter)
+            self._poi_diameter = float(diameter)
             self.sigDiameterUpdated.emit(diameter)
             return
 
@@ -1281,22 +1263,50 @@ class PoiManagerLogic(LogicBase):
         else:
             return True
 
-    def auto_catch_poi(self):
+    def _local_max(self, scan):
+        scan = np.asarray(scan, order="C")  # scan has to be a 2-D array
+        filter_size = max(self._spot_filter(scan), 1)
+        scan_m = scan.mean()
+        mid_f = int(filter_size / 2)
+        xc = []
+        yc = []
+        for i in range(0, len(scan) - filter_size):
+            for j in range(0, len(scan[i]) - filter_size):
+                local_arr = scan[i:i + filter_size, j:j + filter_size]
+                local_arr = np.asarray(local_arr)
+                arr_threshold = scan_m * self._poi_threshold * 0.5
+                if (scan[i + mid_f][j + mid_f] == local_arr.max()
+                        and self._is_spot_shape(local_arr)
+                        and local_arr.mean() > arr_threshold):
+                    xc.append(i + mid_f)
+                    yc.append(j + mid_f)
+        return xc, yc
 
-        scan_image = self.roi_scan_image.T
+    def auto_catch_poi(self):
+        scan_image = self.roi_scan_image
         x_range = self.roi_scan_image_extent[0]
         y_range = self.roi_scan_image_extent[1]
-        x_axis = np.arange(x_range[0], x_range[1], (x_range[1] - x_range[0]) / len(scan_image[0]))
-        y_axis = np.arange(y_range[0], y_range[1], (y_range[1] - y_range[0]) / len(scan_image))
+        x_axis = np.arange(x_range[0], x_range[1], (x_range[1] - x_range[0]) / len(scan_image))
+        y_axis = np.arange(y_range[0], y_range[1], (y_range[1] - y_range[0]) / len(scan_image[0]))
 
-        #self._poi_mass_threshold
-        df_poi = cg.locate(np.asarray(scan_image), self._poi_diameter,  self._poi_threshold,  self._poi_mass_threshold)
+        for i in range(0, len(scan_image)):
+            for j in range(0, len(scan_image[i])):
+                scan_image[i][j] = int(scan_image[i][j])  # data here somehow needs to be reset, otherwise shit happens.
 
+        threshold = scan_image.mean() * self._poi_threshold
+
+        xc1, yc1 = self._local_max(scan_image)
+        xc2 = []
+        yc2 = []
+        for i in range(0, len(xc1)):
+            if scan_image[xc1[i], yc1[i]] > threshold:
+                xc2.append(xc1[i])
+                yc2.append(yc1[i])
+
+        pois = np.zeros((len(xc2), 3))
         z = self.scanner_position[2]
-        for idx in df_poi.index:
-            i = df_poi['x'][idx]
-            j = df_poi['y'][idx]
-            x_pos = x_axis[int(i)] + (i - int(i)) * (x_axis[int(i) + 1] - x_axis[int(i)])
-            y_pos = y_axis[int(j)] + (j - int(j)) * (y_axis[int(j) + 1] - y_axis[int(j)])
-            poi = [x_pos, y_pos, z]
-            self.add_poi(poi, name="{}".format(idx))
+        for i in range(0, len(pois)):
+            pois[i] = [x_axis[xc2[i]], y_axis[yc2[i]], z]
+            self.add_poi(pois[i])
+            if self.poi_nametag is None:
+                time.sleep(0.1)
