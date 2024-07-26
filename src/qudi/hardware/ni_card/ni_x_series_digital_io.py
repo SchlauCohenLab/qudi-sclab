@@ -41,7 +41,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.helpers import natural_sort
 from qudi.util.constraints import ScalarConstraint
 
-class NIXSeriesDigitalIO(DataInStreamInterface, DetectorInterface):
+class NIXSeriesDigitalIO(SwitchInterface):
     """
     A National Instruments device that can detect and count digital pulses and measure analog
     voltages as data stream.
@@ -56,57 +56,18 @@ class NIXSeriesDigitalIO(DataInStreamInterface, DetectorInterface):
         module.Class: 'ni_card.ni_x_series_digital_io.NIXSeriesDigitalIO'
         options:
             device_name: 'Dev1'
-            digital_sources:  # optional
-                'acceptor': 'PFI0'
-                'donor': 'PFI12'
+            input_ports:  # optional
+                'acceptor': 'port0/line1'
+                'donor': 'port0/line1'
+            output_ports:  # optional
+                'acceptor': 'port0/line1'
+                'donor': 'port0/line1'
     """
 
     # config options
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
-    _digital_sources = ConfigOption(name='digital_sources', default=dict(), missing='info')
-    _analog_sources = ConfigOption(name='analog_sources', default=dict(), missing='info')
-    _external_sample_clock_source = ConfigOption(name='external_sample_clock_source',
-                                                 default=None,
-                                                 missing='nothing')
-    _external_sample_clock_frequency = ConfigOption(
-        name='external_sample_clock_frequency',
-        default=None,
-        missing='nothing',
-        constructor=lambda x: x if x is None else float(x)
-    )
-    _adc_voltage_range = ConfigOption('adc_voltage_range', default=(-10, 10), missing='info')
-    _max_channel_samples_buffer = ConfigOption(name='max_channel_samples_buffer',
-                                               default=1024**2,
-                                               missing='info',
-                                               constructor=lambda x: max(int(round(x)), 1024**2))
-    _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
-    _clock_counter = ConfigOption('clock_counter', default=None, missing='nothing')
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # NIDAQmx device handle
-        self._device_handle = None
-        # Task handles for NIDAQmx tasks
-        self._di_task_handles = list()
-        self._ai_task_handle = None
-        self._clk_task_handle = None
-        # nidaqmx stream reader instances to help with data acquisition
-        self._di_readers = list()
-        self._ai_reader = None
-        # Internal settings
-        self.__sample_rate = -1
-        self.__buffer_size = -1
-        self.__streaming_mode = None
-        # List of all available counters and terminals for this device
-        self.__all_counters = tuple()
-        self.__all_digital_terminals = tuple()
-        self.__all_analog_terminals = tuple()
-        # currently active channels
-        self.__active_channels = tuple()
-        # Stored hardware constraints
-        self._constraints = None
-        self.__tmp_buffer = None
+    _input_ports = ConfigOption(name='input_ports', default=dict(), missing='info')
+    _output_ports = ConfigOption(name='output_ports', default=dict(), missing='info')
 
     def on_activate(self):
         """
@@ -125,159 +86,15 @@ class NIXSeriesDigitalIO(DataInStreamInterface, DetectorInterface):
                 break
         self._device_handle = ni.system.Device(self._device_name)
 
-        self.__all_counters = tuple(
-            ctr.split('/')[-1] for ctr in self._device_handle.co_physical_chans.channel_names if
-            'ctr' in ctr.lower()
-        )
-        self.__all_digital_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.terminals if
-            'PFI' in term
-        )
-        self.__all_analog_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in
-            self._device_handle.ai_physical_chans.channel_names
-        )
-
-        # Check digital input terminals
-        if self._digital_sources:
-            source_set = set(self._extract_terminal(src) for src in self._digital_sources.values())
-            invalid_sources = source_set.difference(set(self.__all_digital_terminals))
-            if invalid_sources:
-                self.log.error(
-                    'Invalid digital source terminals encountered. Following sources will '
-                    'be ignored:\n  {0}\nValid digital input terminals are:\n  {1}'
-                    ''.format(', '.join(natural_sort(invalid_sources)),
-                              ', '.join(self.__all_digital_terminals)))
-            valid_digital_src = natural_sort(source_set.difference(invalid_sources))
-            d_src = self._digital_sources.copy()
-            for ch, src in d_src.items():
-                if src not in valid_digital_src:
-                    self._digital_sources.pop(ch)
-
-                # Check analog input channels
-        if self._analog_sources:
-            source_set = set(self._extract_terminal(src) for src in self._analog_sources.values())
-            invalid_sources = source_set.difference(set(self.__all_analog_terminals))
-            if invalid_sources:
-                self.log.error('Invalid analog source channels encountered. Following sources will '
-                               'be ignored:\n  {0}\nValid analog input channels are:\n  {1}'
-                               ''.format(', '.join(natural_sort(invalid_sources)),
-                                         ', '.join(self.__all_analog_terminals)))
-            valid_analog_src = natural_sort(source_set.difference(invalid_sources))
-            a_src = self._analog_sources.copy()
-            for ch, src in a_src.items():
-                if src not in valid_analog_src:
-                    self._analog_sources.pop(ch)
-
-        # Check if all input channels fit in the device
-        if len(self._digital_sources) > 3:
-            raise ValueError(
-                'Too many digital channels specified. Maximum number of digital channels is 3.'
-            )
-        if len(self._analog_sources) > 16:
-            raise ValueError(
-                'Too many analog channels specified. Maximum number of analog channels is 16.'
-            )
-
-        # Check if there are any valid input channels left
-        if not self._analog_sources and not self._digital_sources:
-            raise ValueError(
-                'No valid analog or digital sources defined in config. Activation of '
-                'NIXSeriesInStreamer failed!'
-            )
-
-        # Create constraints
-        channel_units = {chnl: 'counts/s' for chnl in self._digital_sources.keys()}
-        channel_units.update({chnl: 'V' for chnl in self._analog_sources.keys()})
-        self._constraints = DataInStreamConstraints(
-            channel_units=channel_units,
-            sample_timing=SampleTiming.CONSTANT,
-            streaming_modes=[StreamingMode.CONTINUOUS], # TODO: Implement FINITE streaming mode
-            data_type=np.float64,
-            channel_buffer_size=ScalarConstraint(default=1024**2,
-                                                 bounds=(2, self._max_channel_samples_buffer),
-                                                 increment=1,
-                                                 enforce_int=True),
-            # FIXME: What is the minimum frequency for the digital counter timebase?
-            sample_rate=ScalarConstraint(default=50.0,
-                                         bounds=(self._device_handle.ai_min_rate,
-                                                 self._device_handle.ai_max_multi_chan_rate),
-                                         increment=1,
-                                         enforce_int=False)
-        )
-
-        self._channels = dict()
-        for ch, src in self._digital_sources.items():
-            self._channels[ch] = Channel(ch, unit=channel_units[ch],
-                                     dtype=np.float64,
-                                     streaming_mode=StreamingMode.CONTINUOUS, buffer_size=ScalarConstraint(default=1024**2,
-                                                 bounds=(2, self._max_channel_samples_buffer),
-                                                 increment=1,
-                                                 enforce_int=True),
-                                     sample_timing=SampleTiming.CONSTANT, sample_rate=ScalarConstraint(default=50.0,
-                                         bounds=(self._device_handle.ai_min_rate,
-                                                 self._device_handle.ai_max_multi_chan_rate),
-                                         increment=1,
-                                         enforce_int=False), bin_width=None)
-
-        for ch, src in self._analog_sources.items():
-            self._channels[ch] = Channel(ch, unit=channel_units[ch],
-                                     dtype=np.float64,
-                                     streaming_mode=StreamingMode.CONTINUOUS, buffer_size=ScalarConstraint(default=1024**2,
-                                                 bounds=(2, self._max_channel_samples_buffer),
-                                                 increment=1,
-                                                 enforce_int=True),
-                                     sample_timing=SampleTiming.CONSTANT, sample_rate=ScalarConstraint(default=50.0,
-                                         bounds=(self._device_handle.ai_min_rate,
-                                                 self._device_handle.ai_max_multi_chan_rate),
-                                         increment=1,
-                                         enforce_int=False), bin_width=None)
-
-        # Check external sample clock source
-        if self._external_sample_clock_source is not None:
-            new_name = self._extract_terminal(self._external_sample_clock_source)
-            if new_name in self.__all_digital_terminals:
-                self._external_sample_clock_source = new_name
-            else:
-                self.log.error(
-                    f'No valid source terminal found for external_sample_clock_source '
-                    f'"{self._external_sample_clock_source}". Falling back to internal sampling '
-                    f'clock.'
-                )
-                self._external_sample_clock_source = None
-
-        # Check external sample clock frequency
-        if self._external_sample_clock_source is None:
-            self._external_sample_clock_frequency = None
-        elif self._external_sample_clock_frequency is None:
-            self.log.error('External sample clock source supplied but no clock frequency. '
-                           'Falling back to internal clock instead.')
-            self._external_sample_clock_source = None
-        elif not self._constraints.sample_rate.is_valid(self._external_sample_clock_frequency):
-            self.log.error(
-                f'External sample clock frequency requested '
-                f'({self._external_sample_clock_frequency:.3e}Hz) is out of bounds. Please '
-                f'choose a value between {self._constraints.sample_rate.minimum:.3e}Hz and '
-                f'{self._constraints.sample_rate.maximum:.3e}Hz. Value will be clipped to the '
-                f'closest boundary.'
-            )
-            self._external_sample_clock_frequency = self._constraints.sample_rate.clip(
-                self._external_sample_clock_frequency
-            )
-
-        self._terminate_all_tasks()
-        if self._external_sample_clock_frequency is None:
-            sample_rate = self._constraints.sample_rate.default
-        else:
-            sample_rate = self._external_sample_clock_frequency
-        self.configure(active_channels=self._constraints.channel_units,
-                       streaming_mode=StreamingMode.CONTINUOUS,
-                       channel_buffer_size=self._constraints.channel_buffer_size.default,
-                       sample_rate=sample_rate)
+        self._switches = {}
+        self._states = {}
+        for switch in self._input_ports.keys():
+            self._switches[switch] = ['0', '1']
+            self._states[switch] = '0'
 
     def on_deactivate(self):
         """ Shut down the NI card. """
-        self._terminate_all_tasks()
+        pass
 
     @property
     def name(self):
@@ -318,9 +135,9 @@ class NIXSeriesDigitalIO(DataInStreamInterface, DetectorInterface):
         assert state in avail_states[switch], f'Invalid state name "{state}" for switch "{switch}"'
 
         with nidaqmx.Task() as task:
-            task.do_channels.add_do_chan('Dev1/port1/line0:3')
+            task.do_channels.add_do_chan(f'{self._device_name}/{self._output_ports[switch]}')
             task.start()
             while True:
-                task.write([8, 0, 0, 0])
+                task.write([int(state == '1')])
 
         self._states[switch] = state
