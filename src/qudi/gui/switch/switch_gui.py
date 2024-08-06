@@ -94,7 +94,7 @@ class SwitchGui(GuiBase):
 
     Example config for copy-paste:
 
-        switch_gui:
+    switch_gui:
         module.Class: 'switch.switch_gui.SwitchGui'
         connect:
             switchlogic: 'switch_logic'

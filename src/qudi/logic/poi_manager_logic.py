@@ -372,9 +372,9 @@ class PoiManagerLogic(LogicBase):
     """
 
     # declare connectors
-    _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
-    _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
-    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
+    _optimizelogic = Connector(name='optimize_logic', interface='ScannerOptimizeLogic')
+    _scanninglogic = Connector(name='scanning_logic', interface='ScannerLogic')
+    _data_logic = Connector(name='data_logic', interface='ScannerDataLogic')
 
     # config options
     _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))

@@ -364,17 +364,22 @@ class TimeTagger(FastCounterInterface):
 
     # ================ Time-tag streaming ===================
 
-    def start_stream(self, filename, acq_time):
+    def acquired_stream(self, filename, acq_time):
         """ Start the time-tag streaming measurement of the fast counter."""
 
         fw = tt.FileWriter(self._tagger, filename, [self._ref['channel'], self._apd['channel']])
         time.sleep(acq_time)
         fw.stop()
 
-        n_events = fw.getTotalEvents()
+        self.n_events = fw.getTotalEvents()
+
+        return
+
+    def read_stream(self, filename):
+        """ Start the time-tag streaming measurement of the fast counter."""
 
         fr = tt.FileReader(filename)
-        buffer = fr.getData(n_events)
+        buffer = fr.getData(self.n_events)
         timestamps = buffer.getTimestamps()
         channels = buffer.getChannels()
 
@@ -386,7 +391,7 @@ class TimeTagger(FastCounterInterface):
                 macro_time.append(timestamps[i])
                 micro_time.append(timestamps[i]-timestamps[i-1])
 
-        return np.array(macro_time), np.array(micro_time)
+        return np.array(macro_time)*1e-12, np.array(micro_time)*1e-12
 
     # ================ Slow counter interface ===================
 

@@ -32,7 +32,7 @@ from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImage
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
 from qudi.util.widgets.plotting.interactive_curve import CursorPositionLabel
 from qudi.util.paths import get_artwork_dir
-from qudi.interface.scanning_probe_interface import ScanData, ScannerAxis, ScannerChannel
+from qudi.interface.scanner_interface import ScanData, ScannerAxis, ScannerChannel
 
 
 class _BaseScanWidget(QtWidgets.QWidget):

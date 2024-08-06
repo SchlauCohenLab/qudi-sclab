@@ -88,7 +88,7 @@ class NIXSeriesDigitalIO(SwitchInterface):
 
         self._switches = {}
         self._states = {}
-        for switch in self._input_ports.keys():
+        for switch in self._output_ports.keys():
             self._switches[switch] = ['0', '1']
             self._states[switch] = '0'
 
@@ -131,13 +131,14 @@ class NIXSeriesDigitalIO(SwitchInterface):
         @param str state: name of the state to set
         """
         avail_states = self.available_states
+        state = str(state)
         assert switch in avail_states, f'Invalid switch name: "{switch}"'
         assert state in avail_states[switch], f'Invalid state name "{state}" for switch "{switch}"'
 
-        with nidaqmx.Task() as task:
+        with ni.Task() as task:
             task.do_channels.add_do_chan(f'{self._device_name}/{self._output_ports[switch]}')
             task.start()
-            while True:
-                task.write([int(state == '1')])
+            task.write([state == '1'])
+            task.stop()
 
         self._states[switch] = state
