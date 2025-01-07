@@ -277,7 +277,7 @@ class TimeTagger(FastCounterInterface):
             start_channel=self._ref['channel'],
             next_channel=self._ref['channel'],
             sync_channel=tt.CHANNEL_UNUSED,
-            binwidth=int(np.round(self._bin_width * 1e12)),
+            binwidth=int(self._bin_width),
             n_bins=int(self._record_length),
             n_histograms=number_of_gates)
 
@@ -343,7 +343,7 @@ class TimeTagger(FastCounterInterface):
         """
         info_dict = {'elapsed_sweeps': None,
                      'elapsed_time': None}  # TODO : implement that according to hardware capabilities
-        return np.array(self._stream.getData(), dtype='int64'), info_dict
+        return np.array(self._meas.getData(), dtype='int64'), info_dict
 
     def get_status(self):
         """ Receives the current status of the Fast Counter and outputs it as
@@ -364,14 +364,19 @@ class TimeTagger(FastCounterInterface):
 
     # ================ Time-tag streaming ===================
 
-    def acquired_stream(self, filename, acq_time):
+    def start_stream(self, filename):
         """ Start the time-tag streaming measurement of the fast counter."""
 
-        fw = tt.FileWriter(self._tagger, filename, [self._ref['channel'], self._apd['channel']])
-        time.sleep(acq_time)
-        fw.stop()
+        self._fw = tt.FileWriter(self._tagger, filename, [self._ref['channel'], self._apd['channel']])
 
-        self.n_events = fw.getTotalEvents()
+        return
+
+    def stop_stream(self):
+        """ Start the time-tag streaming measurement of the fast counter."""
+
+        self._fw.stop()
+
+        self.n_events = self._fw.getTotalEvents()
 
         return
 

@@ -356,7 +356,7 @@ class ScannerOptimizeLogic(LogicBase):
 
     def _scan_state_changed(self, is_running, data, caller_id):
 
-        with self._thread_lock:
+        with (self._thread_lock):
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
             elif data is not None:
@@ -365,18 +365,22 @@ class ScannerOptimizeLogic(LogicBase):
                 try:
                     if data.scan_dimension == 1:
                         x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
-                        opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
+                        _, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
                             x,
                             data.data[self._data_channel]
                         )
+                        imax = np.argmax(data.data[self._data_channel])
+                        opt_pos = (x[imax],)
                     else:
                         x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
                         y = np.linspace(*data.scan_range[1], data.scan_resolution[1])
                         xy = np.meshgrid(x, y, indexing='ij')
-                        opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
+                        _, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
                             xy,
                             data.data[self._data_channel].ravel()
                         )
+                        imax, jmax = np.unravel_index(np.argmax(data.data[self._data_channel]), data.data[self._data_channel].shape)
+                        opt_pos = (x[imax], y[jmax])
 
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
                     #self.log.debug(f"Optimizer issuing position update: {position_update}")
