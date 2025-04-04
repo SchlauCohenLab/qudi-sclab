@@ -189,6 +189,7 @@ class TimeTagger(FastCounterInterface):
         self._number_of_gates = int(100)
         self._bin_width = 1
         self._record_length = int(4000)
+        self.n_events = 1e6
 
         self.statusvar = 0
 
@@ -388,15 +389,22 @@ class TimeTagger(FastCounterInterface):
         timestamps = buffer.getTimestamps()
         channels = buffer.getChannels()
 
-        macro_time = []
-        micro_time = []
+        # Use boolean indexing to filter channels
+        apd_indices = np.where(channels == self._apd['channel'])[0]
 
-        for i in range(len(timestamps)):
-            if channels[i] == self._apd['channel'] and i > 0:
-                macro_time.append(timestamps[i])
-                micro_time.append(timestamps[i]-timestamps[i-1])
+        # Pre-allocate lists for macro_time and micro_time
+        macro_time = np.empty(len(apd_indices), dtype=np.int64)
+        micro_time = np.empty(len(apd_indices), dtype=np.int64)
 
-        return np.array(macro_time)*1e-12, np.array(micro_time)*1e-12
+        # Calculate macro_time and micro_time using vectorized operations
+        macro_time[:] = timestamps[apd_indices]
+        micro_time[:] = timestamps[apd_indices] - timestamps[apd_indices - 1]
+
+        # Exclude the first element in micro_time since it has no previous timestamp
+        micro_time = micro_time[1:]
+        macro_time = macro_time[1:]
+
+        return macro_time * 1e-12, micro_time * 1e-12
 
     # ================ Slow counter interface ===================
 
