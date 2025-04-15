@@ -27,6 +27,7 @@ import ctypes as ct
 from qudi.core.configoption import ConfigOption
 from interface.actuator_interface import ActuatorInterface, Axis
 from qudi.util.mutex import Mutex
+from pylablib.devices import Thorlabs
 
 class KinesisMotor(ActuatorInterface):
     """ This class is implements communication with Thorlabs motors via Kinesis dll
@@ -38,8 +39,10 @@ class KinesisMotor(ActuatorInterface):
         options:
             dll_folder: 'C:\Program Files\Thorlabs\Kinesis'
             axes_cfg: 
-                phi : 000000123
-                teta : 000000123
+                phi : 
+                    serial_number: 000000123
+                    polling_rate_ms: 100
+                    scale: stage
 
     This hardware file have been develop for the TDC001/KDC101 rotation controller. It should work with other motors
     compatible with kinesis. Please be aware that Kinesis dll can be a little buggy sometimes.
@@ -47,76 +50,53 @@ class KinesisMotor(ActuatorInterface):
     https://github.com/MSLNZ/msl-equipment/issues/1
 
     """
-    _dll_folder = ConfigOption('dll_folder', default=r"C:\Program Files\Thorlabs\Kinesis")
-    _dll_file = ConfigOption('dll_file', default="Thorlabs.MotionControl.KCube.DCServo.dll")
     _axes_cfg = ConfigOption('axes_cfg', missing='error')
-    _polling_rate_ms = ConfigOption('polling_rate_ms', default=200)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mutex = Mutex()
-
-        self._axes = dict()
 
     def on_activate(self):
         """
         Activate the module
         """
 
-        if sys.version_info < (3, 8):
-            os.chdir(self._dll_folder)
-        else:
-            os.add_dll_directory(r"C:\Program Files\Thorlabs\Kinesis")
-            
-        self._dll = ct.cdll.LoadLibrary(self._dll_file)
-        #except OSError:
-        #    self.log.error('Error while loading the dll library, check the dll path.')
-        
-        self._dll.TLI_BuildDeviceList()
-
         self._axes = dict()
+        self._devices = dict()
 
-        for axis, sn in self._axes_cfg.items():
-            serial_number = ct.c_char_p(str(sn).encode('utf-8'))
-            self._dll.BMC_Open(serial_number)
-            self._dll.BMC_LoadSettings(serial_number)
-            self._dll.BMC_StartPolling(serial_number, ct.c_int(self._polling_rate_ms))
-            #max_pos = self._dll.BMC_GetStageAxisInfo_MaxPos(serial_number)
-            #print(max_pos)
-            
-            self._axes[axis] = Axis(axis, 'm', (0, int(360)), step_range=(0, np.inf),
-                     resolution_range=(0, 100000), frequency_range=(0, 1e3), velocity_range=(0, np.inf))
+        for axis, cfg in self._axes_cfg.items():
 
+            if serial_num not in dict(Thorlabs.list_kinesis_devices()).keys():
+                self.log.error('Serial number {} not found in the list of connected devices'.format(cfg['serial_number']))
+                continue
+
+            if 'scale' not in cfg.keys():
+                scale = 'stage'
+            else:
+                scale = cfg['scale']
+                
+            self._devices[axis] = Thorlabs.KinesisMotor(cfg['serial_number'], scale=scale)
+            self.log.info('Found {} motor with serial number {}'.format(axis, cfg['serial_number']))
+
+
+            units = self._devices[axis].get_scale_units()
+            velocity_range = self._devices[axis].get_velocity_parameters()
+
+            print(self._devices[axis].get_full_info())
+            self._axes[axis] = Axis(axis, units, (0, int(360)), step_range=(0, np.inf),
+                     resolution_range=(0, 100000), frequency_range=(0, 1e3), velocity_range=velocity_range)
 
     def on_deactivate(self):
         """ Disconnect from hardware on deactivation. """
-        for axis, sn in self._axes_cfg.items():
-            self._dll.BMC_ClearMessageQueue(sn)
-            self._dll.BMC_StopPolling(sn)
-            self._dll.BMC_Close(sn)
-
-    def get_position(self, name):
-        """ Get the position in real work unit of the motor """
-        serial_number = self._axes_cfg[name]
-        position = self._dll.BMC_GetPosition(serial_number)
-        real_unit = ct.c_double()
-        self._dll.BMC_GetRealValueFromDeviceUnit(serial_number, position, ct.byref(real_unit), 0)
-        return real_unit.value
-
-    def set_position(self, name, value):
-        """ Set the position in real work unit of an axis """
-        serial_number = self._axes_cfg[name]
-        device_unit = ct.c_int()
-        self._dll.BMC_GetDeviceUnitFromRealValue(serial_number, ct.c_double(value), ct.byref(device_unit), 0)
-        self._dll.BMC_MoveToPosition(serial_number, device_unit)
+        for axis, cfg in self._axes_cfg.items():
+            self._devices[axis].close()
 
     def home(self, axes=None):
         """ Send a home instruction to a motor """
         if axes is None:
             axes = self._axes.keys()
         for axis in axes:
-            serial_number = self._axes_cfg[axis]
-            self._dll.BMC_Home(serial_number)
+            self._devices[axis].home()
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -133,7 +113,7 @@ class KinesisMotor(ActuatorInterface):
         """
         for axis, pos in positions.items():
             if self._axes[axis].value_range[0] <= pos <= self._axes[axis].value_range[1]:
-                self.set_position(axis, pos)
+                self._devices[axis].move_to(pos)
             else:
                 self.log.error('The input position of axis {} is outside the device range.'.format(axis))
 
@@ -147,7 +127,7 @@ class KinesisMotor(ActuatorInterface):
         for axis, dis in displacement.items():
             pos = current_pos[axis] + dis
             if self._axes[axis].value_range[0] <= pos <= self._axes[axis].value_range[1]:
-                self.set_position(axis, pos)
+                self._devices[axis].move_by(dis)
             else:
                 self.log.error('The input position of axis {} is outside the device range.'.format(axis))
 
@@ -164,7 +144,7 @@ class KinesisMotor(ActuatorInterface):
         if axes is None:
             axes = self._axes.keys()
         for axis in axes:
-            pos[axis] = self.get_position(axis)
+            pos[axis] = self._devices[axis].get_position()
         return pos
 
     def abort(self, axes=None):
@@ -189,5 +169,5 @@ class KinesisMotor(ActuatorInterface):
         if axes is None:
             axes = self._axes.keys()
         for axis in axes:
-            status[axis] = 'OK'
+            status[axis] = self._devices[axis].get_status()
         return status
