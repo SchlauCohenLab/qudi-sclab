@@ -566,7 +566,7 @@ class TimeTagger(FastCounterInterface):
         """ Start the time-tag streaming measurement of the fast counter."""
 
         with self._thread_lock:
-            #self._tdl.clear_impl()
+            self._stream.getData()
             self._stream.start()
             self.module_state.lock()
             self._stream_data = []
@@ -613,6 +613,25 @@ class TimeTagger(FastCounterInterface):
                 self.__start_timer()
             
             return
+        
+    def load_stream_file(self, filename):
+        """ Start the time-tag streaming measurement of the fast counter."""
+        
+        fr = tt.FileReader(filename)
+        buffer = fr.getData(1e6)
+        timestamps = buffer.getTimestamps()
+        channels = buffer.getChannels()
+
+        # Use boolean indexing to filter channels
+        apd_indices = np.where(np.isin(channels, self._apd_channels_index))[0]
+
+        # Pre-allocate lists for macro_time and micro_time
+        tags_ch = channels[apd_indices]
+        tags_ts = timestamps[apd_indices] * 1E-12
+        tags_dt = (timestamps[apd_indices] - timestamps[apd_indices - 1]) * 1E-12
+
+
+        return tags_ch, tags_ts, tags_dt, channels
         
     def __start_timer(self):
         time.sleep(0.2)
