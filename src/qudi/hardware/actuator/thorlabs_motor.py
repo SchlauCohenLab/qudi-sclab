@@ -21,18 +21,19 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 """
 
 import datetime
-import clr
-import sys
 
+import sys
+import clr
 from System import String
 from System import Decimal
 from System.Collections import *
-
+from qudi.util.mutex import Mutex
 from collections import OrderedDict
 
 from qudi.core.configoption import ConfigOption
 from interface.motor_interface import MotorInterface
 
+__all__ = ['MotorThorlabs']
 
 class MotorThorlabsKinesisBrushedDC(MotorInterface):
     """
@@ -52,9 +53,13 @@ class MotorThorlabsKinesisBrushedDC(MotorInterface):
     _modtype = 'hardware'
 
     _kinesis_path = ConfigOption('kinesis_path', r'C:\Program Files\Thorlabs\Kinesis')
-    _controller_serial = ConfigOption('controller_serial', missing='error')
+    _controller_serial = ConfigOption('controller_serial', '28253647', missing='error')
     _axis_label = ConfigOption('axis_label', 'x', missing='warn')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._mutex = Mutex()
+        
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
