@@ -85,7 +85,7 @@ class PCIe1430Camera(CameraInterface):
     """
 
     #pll.par["devices/dlls/niimaq"] =_dll_location
-    cam1 = IMAQ.IMAQCamera(_name)  # ask Adrien how it should be done here 
+    cam1 = IMAQ.IMAQCamera(_name)  # Put it in on_acitivate  
 
 
     def on_activate(self):
@@ -110,7 +110,7 @@ class PCIe1430Camera(CameraInterface):
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
-        self.stop_acquisition()
+        self.stop_acquisition() #also break the connection and so on
 
     def get_name(self):
         """ Retrieve an identifier of the camera that the GUI can print
@@ -150,8 +150,8 @@ class PCIe1430Camera(CameraInterface):
 
         @return bool: Success ?
         """
-        cam1.setup_acquisition(mode='snap', nframes=100)
-        pass cam1.acquisition_in_progress() # ask Adrien how it should be done here 
+        self.setup_acquisition(mode='snap', nframes=self._frames)
+        pass self.acquisition_in_progress() # ask Adrien how it should be done here 
 
 
     def stop_acquisition(self):
@@ -159,8 +159,10 @@ class PCIe1430Camera(CameraInterface):
 
         @return bool: Success ?
         """
-        cam1.stop_acquisition()
-        return  cam1.acquisition_in_progress() == False
+        if cam1.acquisition_in_progress():
+            cam1.stop_acquisition()
+
+        return  not cam1.acquisition_in_progress()
 
 
     def get_acquired_data(self):
@@ -181,6 +183,11 @@ class PCIe1430Camera(CameraInterface):
 
         @return float: setted new exposure time
         """
+        if not float(exposure):
+            self.log.warning("Give me some float")
+            return
+        
+        self._frames = exposure//dt
         pass
 
 
