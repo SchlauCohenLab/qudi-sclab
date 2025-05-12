@@ -60,6 +60,7 @@ class PCIe1430Camera(BaseCamera):
 
     _nframe = _default_nframes
     _live = True
+    cam = None
 
 
 
