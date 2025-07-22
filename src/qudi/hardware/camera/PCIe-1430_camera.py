@@ -32,7 +32,7 @@ from pylablib.devices import IMAQ
 import pylablib as pll
 from qudi.core.configoption import ConfigOption
 from qudi.interface.camera_interface import CameraInterfaces
-import logging
+from pylablib.core.errors import DeviceError
 
 
 
@@ -45,7 +45,7 @@ class PCIe1430Camera(CameraInterfaces):
         module.Class: 'camera.PCIe-1430_camera.PCIe1430Camera'
         options:
             dll_location: 'path/to/dlls'
-            camera_name: name identifying the camera 
+            camera_name: name identifying the camera (usually labeled 'img0','img1', ect)
             nframes: 5000 # number of frames per step
 
 
@@ -71,6 +71,7 @@ class PCIe1430Camera(CameraInterfaces):
         try:
             self.cam = IMAQ.IMAQCamera(self._name)
             self._width, self._height = self.cam.get_detector_size()
+            self.cam.set_frame_format('array')
         except Exception as e:
             self.log.error(f"Failed to start NI IMAQ camera: {e}") 
             raise
@@ -123,8 +124,7 @@ class PCIe1430Camera(CameraInterfaces):
 
         @return bool: Success ?
         """
-        self.cam.setup_acquisition(mode='snap', nframes=self._frames)
-        self.cam.start_acquisition()
+        self._last_frame  = self.cam.grab(self._frames)
         return self.get_ready_state() 
 
     def stop_acquisition(self):
@@ -145,7 +145,21 @@ class PCIe1430Camera(CameraInterfaces):
 
         Each pixel might be a float, integer or sub pixels
         """
-        return self.cam.read_newest_image()
+        if self.cam.acquisition_in_progress():
+            # Live acquisition mode
+            self.cam.wait_for_frame()
+            images = self.cam.read_newest_image()
+            if not images:
+                self.log.warning("No new image available during live acquisition.")
+                return None
+        else:
+            #Single acquisition mode 
+            images = self._last_frame if hasattr(self, '_last_frame') else []
+            if not images:
+                self.log.warning("No image available from single acquisition.")
+                return None
+        frame = np.average(images, axis=0)
+        return frame 
 
 
     def set_nframe(self, nframe):
@@ -156,7 +170,7 @@ class PCIe1430Camera(CameraInterfaces):
         @return float: setted new number of frame 
         """
         if not float(nframe) or nframe <= 0:
-            self.log.warning("Give me some positive float") # Retourne le paramêtre nframe dans ton message d'erreur afin d'aider l'utilisateur. C'est une erreur donc utilise error et pas warning
+            self.log.warning(f"Give me some positive float.")
             return self._nframe
         self._nframe = nframe
         return self._nframe

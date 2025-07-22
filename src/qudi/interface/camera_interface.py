@@ -121,6 +121,30 @@ class CameraInterface(Base):
         @return float: exposure gain
         """
         pass
+    @abstractmethod
+    def get_acquired_data(self):
+        """ Return an array of last acquired image.
+
+        @return numpy array: image data in format [[row],[row]...]
+
+        Each pixel might be a float, integer or sub pixels
+        """
+        pass
+
+    @abstractmethod
+    def set_nframe(self, nframe):
+        """ Set the number of frames per steps
+
+        @param float frame: desired number of frame per step
+
+        @return float: setted new number of frame 
+        """
+    @abstractmethod
+    def get_nframe(self):
+        """ Get the number of frames per steps
+
+        @return float number of framws
+        """
 
     @abstractmethod
     def get_ready_state(self):
