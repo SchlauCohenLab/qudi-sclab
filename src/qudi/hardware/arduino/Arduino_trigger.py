@@ -58,8 +58,8 @@ class ArduinoTrigger(ArduinoInterface):
     
     def on_deactivate(self):
         """ Close the Arduino connection """
-        if self.serial.is_open:
-            self.serial.close()
+        if self._arduino.is_open:
+            self._arduino.close()
             self.log.info(f"Closed connection to Arduino on port {self._port}")
         else:
             self.log.error('Connection to Arduino is already closed.')
@@ -69,7 +69,8 @@ class ArduinoTrigger(ArduinoInterface):
         """ Set the pin to high (True) """
         if self._arduino.is_open:
             self._arduino.write(f'{self._pin}H\n'.encode())
-            self.log.info(f'Set pin {self._pin} to True')
+            response = self._arduino.readline().decode().strip()
+            self.log.info(f'{response}')
         else:
             self.log.error('Arduino connection is not open.')
 
@@ -77,6 +78,20 @@ class ArduinoTrigger(ArduinoInterface):
         """ Set the pin to low (False) """
         if self._arduino.is_open:
             self._arduino.write(f'{self._pin}L\n'.encode())
-            self.log.info(f'Set pin {self._pin} to False')
+            response = self._arduino.readline().decode().strip()
+            self.log.info(f'{response}')
         else:
             self.log.error('Arduino connection is not open.')
+
+    def test_connection(self):
+        test_command = 'TEST'
+        if self._arduino.is_open:
+            self._arduino.write(f'{test_command}\n'.encode())
+            response = self._arduino.readline().decode().strip()
+            if response:
+                self.log.info('Connection SUCCESS')
+            else:
+                self.log.warning('Connection ERROR')
+        else:
+            self.log.error('Aduino connection is not open.')
+            

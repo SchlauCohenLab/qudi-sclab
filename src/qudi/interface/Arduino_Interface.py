@@ -46,3 +46,7 @@ class ArduinoInterface(Base):
     def set_pin_low(self):
         """ Set the pin to low (False) """
         pass
+
+    def test_connection(self):
+        "Send a test command to the arduino to make sure that a connection has been initiated"
+        pass
