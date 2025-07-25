@@ -166,9 +166,7 @@ class PCIe1430Camera(CameraInterface):
         else:
             #Single acquisition mode 
             images = self._last_frame.copy() if self._last_frame is not None else []
-
-        frame = np.average(images, axis=0)
-        return frame 
+        return images 
 
 
     def set_nframe(self, nframe):
