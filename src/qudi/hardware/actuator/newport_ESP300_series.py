@@ -115,7 +115,7 @@ class NewportESP300(ActuatorInterface):
 
             self._axes[axis] = Axis(axis, cfg["unit"], (cfg["min"], cfg["max"]),
                 step_range=(int(cfg["min"]/1e-3), int(cfg["max"]/1e-3)),
-                velocity_range=(0, float(self.query(axis, "VA"))*1e-3),
+                velocity_range=(0, float(self.query(axis, "VU"))*1e-3),
                 resolution_range=(1, 100000),
                 frequency_range=(0, 1e3))
 
