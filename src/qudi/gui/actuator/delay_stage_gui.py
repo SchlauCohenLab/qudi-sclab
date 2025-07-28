@@ -93,7 +93,7 @@ class DelayStageGui(GuiBase):
 
         # Use hardware constraints to set slider limits
         axes = self.actuator_logic().get_constraints()
-        self.main_window.set_slider_range(axes[0].step_range[0], axes[0].step_range[1])
+        self.main_window.set_slider_range(axes[0].step_range[0]/1e3, axes[0].step_range[1]/1e3)
              
     def on_deactivate(self):
         self.actuator_logic().sigUpdatePosition.disconnect(self._update_label)

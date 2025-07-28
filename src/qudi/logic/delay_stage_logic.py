@@ -49,11 +49,11 @@ class DelayStageLogic(LogicBase):
 
     def set_delay(self, value):
         self.actuator().move_abs({'x1': value})
-        pos = self.actuator().get_position()
+        pos = self.actuator().get_pos()
         return pos
     
     def get_delay(self):
-        pos = self.actuator().get_position()
+        pos = self.actuator().get_pos()
         return pos
 
     def get_constraints(self):
