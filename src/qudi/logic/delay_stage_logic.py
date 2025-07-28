@@ -56,4 +56,6 @@ class DelayStageLogic(LogicBase):
         pos = self.actuator().get_position()
         return pos
 
+    def get_constraints(self):
+        return self.actuator().get_constraints()
 

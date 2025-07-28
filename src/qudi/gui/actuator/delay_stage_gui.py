@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
 
 """
-DelayStageGui - GUI module for controlling a single-axis delay stage.
+DelayStageGui - GUI module for controlling a single-axis delay stage. Will not work if the stage has more than one axis
 
 This GUI displays a horizontal slider that lets the user adjust the stage position
 in millimeters, and sends the position (converted to meters) to the logic layer.
 
-It uses a QMainWindow-style interface similar to other actuator GUIs in Qudi,
-and reads hardware constraints for range settings.
-
-
 """
 
 __all__ = ['DelayStageGui'] 
+
 from qudi.core.module import GuiBase
+from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from PyQt5 import QtWidgets, QtCore
 
@@ -75,37 +73,38 @@ class DelayStageGui(GuiBase):
     Example config for copy-paste:
 
     delay_stage_gui::
-        module.Class: 'gui.delay_stage_gui.DelayStageGui'
-        options:
-            axis:'x1' 
+        module.Class:  'actuator.delay_stage_gui.DelayStageGui'
         connect:
-            delay_stage_logic: delay_stage_logic
+            delay_stage_logic: actuator_logic
     """
-    _modclass = 'DelayStageGui'
-    _modtype = 'gui'
+    # declare connectors
+    actuator_logic = Connector(interface='DelayStageLogic')
 
-    # Configurable axis label, defaulting to 'x1'
-    _axis = ConfigOption('axis', default='x1')
+
+    
 
     def on_activate(self):
         """ Initializes GUI, connects logic, sets up slider from hardware limits. """
-        self.logic = self.get_module('delay_stage_logic')
-        self.logic.sigUpdatePosition.connect(self._update_label)
+        self.actuator_logic().sigUpdatePosition.connect(self._update_label)
 
         self.main_window = MainWindow()
         self.main_window.on_slider_moved = self._move_stage
         self.main_window.show()
 
         # Use hardware constraints to set slider limits
-        axes = self.logic.actuator().get_constraints()
-        for axis in axes:
-            if axis.name == self._axis:
-                self.main_window.set_slider_range(axis.min, axis.max)
-                break
+        axes = self.actuator_logic().get_constraints()
+        self.main_window.set_slider_range(axes[0].step_range[0], axes[0].step_range[1])
+             
+    def on_deactivate(self):
+        self.actuator_logic().sigUpdatePosition.disconnect(self._update_label)
+        self.main_window.close()
+    
+    def show(self):
+        self.main_window.show()
 
     def _move_stage(self, delay_m):
         """ Sends new stage position (in meters) to logic module. """
-        self.logic.set_delay(delay_m)
+        self.actuator_logic().set_delay(delay_m)
 
     def _update_label(self, pos_dict):
         """ Receives updated stage position from logic and updates label. """
