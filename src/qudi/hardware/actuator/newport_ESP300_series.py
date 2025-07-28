@@ -132,7 +132,7 @@ class NewportESP300(ActuatorInterface):
         :return:
         """
         adress = self._axes_cfg[axis_label]['axis']
-        return self._device.query("0{}{}?".format(adress, command))#.split(command)[1]
+        return self._device.query("{}{}?".format(adress, command))#.split(command)[1]
 
     def write(self, axis_label, command):
         """
@@ -141,7 +141,7 @@ class NewportESP300(ActuatorInterface):
         :return:
         """
         adress = self._axes_cfg[axis_label]['axis']
-        self._device.write("0{}{}?".format(adress, command))
+        self._device.write("{}{}".format(adress, command))
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -155,9 +155,9 @@ class NewportESP300(ActuatorInterface):
 
         @param dict axes_displacement: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+                                {'axis_label': <the-abs-pos-value>}.
+                                'axis_label' must correspond to a label given
+                                to one of the axis.
 
         A smart idea would be to ask the position after the movement.
 
@@ -176,9 +176,9 @@ class NewportESP300(ActuatorInterface):
 
         @param dict axes_position: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+                                {'axis_label': <the-abs-pos-value>}.
+                                'axis_label' must correspond to a label given
+                                to one of the axis.
 
         @return int: error code (0:OK, -1:error)
         """
@@ -254,3 +254,38 @@ class NewportESP300(ActuatorInterface):
         for label in self._axis.keys():
             self.write(label, 'RS')
         return 0
+    
+    def get_speed(self, axes=None):
+        """ Get the vecolity of the stage
+        @param list param_list: optional, if a specific speed of an axis
+                                is desired, then the labels of the needed
+                                axis should be passed in the param_list.
+                                If nothing is passed, then from each axis the
+                                speed is asked.
+        @return dict: with the axis label as key and the speed value as item.
+
+        """
+        vel = {}
+        if axes is None:
+            axes = self._axes.keys()
+        for axis in axes:
+            vel[axis] = float(self.query(axis, "VA")) * 1e-3
+
+        return vel
+
+    def set_speed(self, axes_velocity):
+        """ Set the velocty of the stage
+        @param dict param_dict: dictionary, which passes all the relevant
+                                parameters, which should be changed. Usage:
+                                {'axis_label': <the-abs-vel-value>}.
+                                'axis_label' must correspond to a label given
+                                to one of the axis, e.g x1.
+        @return dict: int: error code (0:OK, -1:error)
+        """
+        vel = {}
+        for axis, velocity in axes_velocity.items():
+            command = "VA{}".format(round(velocity/1e-3, 3))
+            self.write(axis, command)
+            vel[axis] = float(self.query(axis, "VA")) * 1e-3
+        
+        return vel

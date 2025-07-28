@@ -305,3 +305,28 @@ class ActuatorInterface(Base):
         @return dict: with the axis label as key and the status number as item.
         """
         pass
+
+    @abstractmethod
+    def get_speed(self, axes=None):
+        """ Get the vecolity of the stage
+        @param list param_list: optional, if a specific speed of an axis
+                                is desired, then the labels of the needed
+                                axis should be passed in the param_list.
+                                If nothing is passed, then from each axis the
+                                speed is asked.
+        @return dict: with the axis label as key and the speed value as item.
+
+        """
+        pass
+
+    @abstractmethod
+    def set_speed(self, axes_velocity):
+        """ Set the velocty of the stage
+        @param dict param_dict: dictionary, which passes all the relevant
+                                parameters, which should be changed. Usage:
+                                {'axis_label': <the-abs-vel-value>}.
+                                'axis_label' must correspond to a label given
+                                to one of the axis, e.g x1.
+        @return dict: int: error code (0:OK, -1:error)
+        """
+        pass
