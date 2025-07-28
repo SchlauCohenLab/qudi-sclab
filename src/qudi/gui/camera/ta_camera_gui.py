@@ -49,6 +49,18 @@ class CameraGui(GuiBase):
         self.start_button.clicked.connect(self._toggle_acquisition)
         controls_layout.addWidget(self.start_button)
 
+        self.nframe_label = QtWidgets.QLabel("Frames:")
+        controls_layout.addWidget(self.nframe_label)
+
+        self.nframe_spin = QtWidgets.QSpinBox()
+        self.nframe_spin.setMinimum(2)
+        self.nframe_spin.setMaximum(10000)
+        self.nframe_spin.setValue(self.logic.get_nframes())
+        self.nframe_spin.setSingleStep(2)
+        self.nframe_spin.valueChanged.connect(self._update_nframes)
+        controls_layout.addWidget(self.nframe_spin)
+
+
         self.save_button = QtWidgets.QPushButton("Save Last Spectrum")
         self.save_button.clicked.connect(self._save_spectra)
         controls_layout.addWidget(self.save_button)
@@ -62,6 +74,10 @@ class CameraGui(GuiBase):
         else:
             self.logic.stop_acquisition()
             self.start_button.setText("Start")
+
+    def _update_nframes(self):
+        new_val = self.nframe_spin.value()
+        self.logic.set_nframes(new_val)
 
     def _save_spectra(self):
         ta, reference = self.logic.get_last_spectra()
