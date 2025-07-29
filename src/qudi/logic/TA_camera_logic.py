@@ -20,7 +20,7 @@ class TACameraLogic(LogicBase):
         module.Class: 'TA_camera_logic.TACameraLogic'
         connect:
             camera: PCIe_1430_camera
-            arduino: : Arduino_trigger
+            trigger: : Arduino_trigger
     """
 
     camera = Connector(interface='CameraInterface')
@@ -44,23 +44,24 @@ class TACameraLogic(LogicBase):
     
     def start_acquisition(self):
         if not self.running:
-            self.camera.start_live_acquisition()
+            self.camera().start_live_acquisition()
             self.running = True
             threading.Thread(target=self._acquisition_loop, daemon=True).start()
     
     def stop_acquisition(self):
         self.running = False
-        self.camera.stop_live_acquisition()
+        self.camera().stop_live_acquisition()
 
     def _acquisition_loop(self):
         while self.running:
 
-            self.trigger().set_pin_high()
             data = self.camera.get_acquired_data()
-            self.trigger().set_pin_low()
-
+            self.trigger().set_pin_high()
             pump_on = data[::2].mean(axis=0)
             pump_off = data[1::2].mean(axis=0)
+            self.trigger().set_pin_low()
+
+
             ta_spectrum = pump_on - pump_off
 
             self.last_wl = pump_off

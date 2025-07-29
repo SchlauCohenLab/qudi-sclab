@@ -1,32 +1,27 @@
+__all__ = ['CameraGuiModule'] 
 from qudi.core.module import GuiBase
 from qudi.util.signals import QtCore
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from qudi.core.connector import Connector
 from matplotlib.figure import Figure
 import numpy as np
 from PyQt5 import QtWidgets
 import os
 
 
-class CameraGui(GuiBase):
+class MainWindow(QtWidgets.QMainWindow):
     """ GUI module to continuously display TA and reference spectra. """
 
-    _modclass = 'CameraGui'
-    _modtype = 'gui'
 
-    def on_activate(self):
-        self.logic = self.get_module('TACameraLogic')
-        self.logic.spectrum_acquired.connect(self._update_plot)
-        self._build_ui()
-        self.main_window.show()
 
-    def _build_ui(self):
-        self.main_window = QtWidgets.QMainWindow()
-        self.main_window.setWindowTitle("TA Camera Spectrum Viewer")
-        self.main_window.setMinimumSize(600, 450)
+    def __init__(self,camera_logic):
+        super().__init__()
+        self.setWindowTitle("TA Camera Spectrum Viewer")
+        self.logic = camera_logic()
 
-        central_widget = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(central_widget)
-        self.main_window.setCentralWidget(central_widget)
+        self.central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(self.central_widget)
+        layout = QtWidgets.QVBoxLayout(self.central_widget)
 
         self.canvas = FigureCanvas(Figure(figsize=(6, 6)))
         layout.addWidget(self.canvas)
@@ -53,10 +48,9 @@ class CameraGui(GuiBase):
         controls_layout.addWidget(self.nframe_label)
 
         self.nframe_spin = QtWidgets.QSpinBox()
-        self.nframe_spin.setMinimum(2)
+        self.nframe_spin.setMinimum(1)
         self.nframe_spin.setMaximum(10000)
         self.nframe_spin.setValue(self.logic.get_nframes())
-        self.nframe_spin.setSingleStep(2)
         self.nframe_spin.valueChanged.connect(self._update_nframes)
         controls_layout.addWidget(self.nframe_spin)
 
@@ -100,3 +94,18 @@ class CameraGui(GuiBase):
         self.ax2.relim()
         self.ax2.autoscale_view()
         self.canvas.draw()
+
+class CameraGuiModule(GuiBase):
+    camera_logic = Connector(interface='TACameraLogic')
+
+    def on_activate(self):
+        self.camera_logic().spectrum_acquired.connect(self._update_plot)
+        self.window = MainWindow(self.camera_logic)
+        self.show()
+        
+    def show(self):
+        self.window.show()
+
+    def on_deactivate(self):
+        self.logic.spectrum_acquired.disconnect(self._update_plot)
+        self.window.close()
