@@ -47,8 +47,13 @@ class DelayStageLogic(LogicBase):
         """
         self._watchdog_active = False
 
-    def set_delay(self, value):
+    def set_delay_abs(self, value):
         self.actuator().move_abs({'x1': value})
+        pos = self.actuator().get_pos()
+        return pos
+    
+    def set_delay_rel(self, value):
+        self.actuator().move_rel({'x1': value})
         pos = self.actuator().get_pos()
         return pos
     
