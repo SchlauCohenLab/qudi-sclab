@@ -16,21 +16,33 @@ class TACameraLogic(LogicBase):
     """ Logic module for interacting with the camera to display TA spectrum
 
 
-    actuator_logic:
+    TA_logic:
         module.Class: 'TA_camera_logic.TACameraLogic'
         connect:
-            camera: PCIe_1430_camera
-            trigger: : Arduino_trigger
+            camera: PCIe_camera
+            trigger: arduino_trigger
+            
     """
 
-    camera = Connector(interface='CameraInterface')
-    trigger = Connector(interface='ArduinoInterface')
+    camera = Connector(interface='PCIe1430Camera')
+    trigger = Connector(interface='ArduinoTrigger')
 
     spectrum_acquired = QtCore.Signal(object,object) # TA spectrum and white light
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
+        self._thread_lock = RecursiveMutex()
+
+   
     def on_activate(self):
         self.running = False
-        self.log.info(f'CameraLogic activated with n_frames')
+        self.log.info(f'CameraLogic activated')
+    
+    def on_deactivate(self):
+        """ Deactivate module
+        """
+        self._watchdog_active = False
 
     def set_nframes(self, n):
         """Set the number of frames to acquire."""
