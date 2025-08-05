@@ -40,17 +40,19 @@ class CameraDummy(CameraInterface):
             # FIXME: resolution config option causes no image
             # resolution: (1280, 720)
             exposure: 0.1
+            nframe: 5000
             gain: 1.0
     """
 
     _support_live = ConfigOption('support_live', True)
     _camera_name = ConfigOption('camera_name', 'Dummy camera')
-    _resolution = ConfigOption('resolution', (1280, 720))  # High-definition !
+    _resolution = ConfigOption('resolution', (1, 2048))  # lign camera
 
     _live = False
     _acquiring = False
     _exposure = ConfigOption('exposure', .1)
-    _gain = ConfigOption('gain', 1.)
+    _gain = ConfigOption('gain', 1)
+    _nframe= ConfigOption('nframe',5000)
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -120,9 +122,11 @@ class CameraDummy(CameraInterface):
 
         Each pixel might be a float, integer or sub pixels
         """
-        data = np.random.random(self._resolution)*self._exposure*self._gain
-        return data.transpose()
-
+        data= np.zeros((self._nframe, self._resolution[0],self._resolution[1]))
+        for i in range(self._nframe):
+            data[i] = np.random.random(self._resolution)*self._exposure*self._gain
+        return data
+    
     def set_exposure(self, exposure):
         """ Set the exposure time in seconds
 
@@ -156,6 +160,13 @@ class CameraDummy(CameraInterface):
         @return float: exposure gain
         """
         return self._gain
+    
+    def set_nframe(self, nframe):
+        self._nframe = nframe
+        return self._nframe
+    
+    def get_nframe(self):
+        return self._nframe
 
     def get_ready_state(self):
         """ Is the camera ready for an acquisition ?
