@@ -24,9 +24,8 @@ class TACameraLogic(LogicBase):
             
     """
 
-    camera = Connector(interface='PCIe1430Camera')
-    trigger = Connector(interface='ArduinoTrigger')
-
+    camera = Connector(interface='CameraInterface')
+    trigger = Connector(interface='ArduinoInterface')
     spectrum_acquired = QtCore.Signal(object,object) # TA spectrum and white light
     
     def __init__(self, *args, **kwargs):
@@ -62,12 +61,12 @@ class TACameraLogic(LogicBase):
     
     def stop_acquisition(self):
         self.running = False
-        self.camera().stop_live_acquisition()
+        self.camera().stop_acquisition()
 
     def _acquisition_loop(self):
         while self.running:
 
-            data = self.camera.get_acquired_data()
+            data = self.camera().get_acquired_data()
             self.trigger().set_pin_high()
             pump_on = data[::2].mean(axis=0)
             pump_off = data[1::2].mean(axis=0)
@@ -79,7 +78,7 @@ class TACameraLogic(LogicBase):
             self.last_wl = pump_off
             self.last_ta = ta_spectrum
 
-            self.spectrum_acquired.emit(self.last_ta ,self.last_wl)
+            self.spectrum_acquired.emit(self.last_ta.flatten() ,self.last_wl.flatten())
 
     def get_last_spectra(self):
         return getattr(self, 'last_ta', None), getattr(self, 'last_wl', None) 
