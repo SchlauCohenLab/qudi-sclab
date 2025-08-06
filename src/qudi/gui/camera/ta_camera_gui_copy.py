@@ -19,8 +19,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Create the main Qt windget 
         self.w = QtWidgets.QWidget()
-        self.w.setWindowTitle('TA test')
         self.setCentralWidget(self.w)
+        self.w.setWindowTitle('TA test')
 
 
 
@@ -45,12 +45,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
         # Change the number of frame spinbox
-        self.nframe_label = QtWidgets.QLabel("Frames:")
+        self.nframe_label = QtWidgets.QLabel("Number of frames per step:")
         self.nframe_spin = QtWidgets.QSpinBox()
         self.nframe_spin.setMinimum(1)
         self.nframe_spin.setMaximum(10000)
         self.nframe_spin.setValue(self.logic().get_nframes())
-        self.nframe_spin.valueChanged.connect(self._update_nframes)
+        self.nframe_spin.editingFinished.connect(self._update_nframes) #Chnage via main box
+        self.nframe_spin.valueChanged.connect(self._on_spinbox_clicked) #Change via the spin box
         self.nframe_spin.setMinimumHeight(40)
 
 
@@ -58,12 +59,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layout = QtWidgets.QGridLayout()
         self.w.setLayout(self.layout)
 
+        #Create a sublayer to have the label and spin close to each others
+        self.nframe_layout = QtWidgets.QHBoxLayout() 
+        self.nframe_layout.addWidget(self.nframe_label) 
+        self.nframe_layout.addWidget(self.nframe_spin)
+        self.nframe_widget = QtWidgets.QWidget()
+        self.nframe_widget.setLayout(self.nframe_layout)
+
         # Add widgets to the layout
         self.layout.addWidget(self.plot_widget_ta,0,0) # upper left
         self.layout.addWidget(self.plot_widget_ref,0,1) # upper right
         self.layout.addWidget(self.start_button,1,0) # lower left
-        self.layout.addWidget(self.nframe_label,1,1) # lower right
-        self.layout.addWidget(self.nframe_spin,1,2)
+        self.layout.addWidget(self.nframe_widget,1,1) # lower right
+
+
 
 
     def _toggle_acquisition(self):
@@ -75,8 +84,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.start_button.setText("Start")
 
     def _update_nframes(self):
-        new_val = self.nframe_spin.value()
-        self.logic().set_nframes(new_val)
+        if self.start_button.text() == "Start": #Camera is not acquiering 
+            new_val = self.nframe_spin.value()
+            self.logic().set_nframes(new_val)
+        else:
+            self.logic().stop_acquisition()
+            new_val = self.nframe_spin.value()
+            self.logic().set_nframes(new_val)
+            self.logic().start_acquisition()
+
+    def _on_spinbox_clicked(self, value):
+    # Only update if changed via arrow buttons (not while typing)
+        if self.nframe_spin.hasFocus():
+            return # Do nothing yet — wait for editingFinished
+        self._update_nframes()
 
     def _update_plot(self, ta_spectrum, reference):
         x = np.arange(0, 2048)

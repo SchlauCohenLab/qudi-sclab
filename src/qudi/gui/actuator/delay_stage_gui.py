@@ -13,7 +13,7 @@ __all__ = ['DelayStageGui']
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from PyQt5 import QtWidgets, QtCore, QtGui
+from qtpy import QtWidgets, QtCore, QtGui
 import numpy as np
 
 class MainWindow(QtWidgets.QMainWindow):
