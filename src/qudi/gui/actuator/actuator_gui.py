@@ -35,7 +35,7 @@ from qudi.core.module import GuiBase
 from qudi.core.configoption import ConfigOption
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
-from qudi.gui.motor.axis_control_dockwidget import AxisDockWidget
+from qudi.gui.actuator.axis_control_dockwidget import AxisDockWidget
 
 
 class MainWindow(QtWidgets.QMainWindow):
