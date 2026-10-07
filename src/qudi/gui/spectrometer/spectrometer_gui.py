@@ -348,7 +348,7 @@ class SpectrometerGui(GuiBase):
             return
         start_index = -1 if self._spectrometer_logic().axis_type_frequency else 0
         end_index = 0 if self._spectrometer_logic().axis_type_frequency else -1
-        self._target_x = self._mw.data_widget.target_point.pos()[0]
+        self._target_x = self._mw.data_widget.target_point.pos().x()
 
         if self._target_x < min(x_data):
             self._target_x = x_data[start_index]

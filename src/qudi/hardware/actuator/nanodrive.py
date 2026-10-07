@@ -133,9 +133,9 @@ class NanoDrive(ActuatorInterface):
         for axis, pos in positions.items():
             if self._axes[axis].value_range[0] <= pos <= self._axes[axis].value_range[1]:
                 answer = self._dll.MCL_SingleWriteN(pos*1e6, self._axes_cfg[axis], self._device_handle)
-                if answer < 0:
-                    self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
-                    return
+                #if answer < 0:
+                #    self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
+                #    return
             else:
                 self.log.error('The input position of axis {} is outside the device range.'.format(axis))
 
@@ -150,9 +150,9 @@ class NanoDrive(ActuatorInterface):
             pos = current_pos + dis
             if self._axes[axis].value_range[0] <= pos <= self._axes[axis].value_range[1]:
                 answer = self._dll.MCL_SingleWriteN(pos*1e6, self._axes_cfg[axis], self._device_handle)
-                if answer < 0:
-                    self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
-                    return
+                #if answer < 0:
+                #    self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
+                #    return
             else:
                 self.log.error('The input position of axis {} is outside the device range.'.format(axis))
 
@@ -170,10 +170,10 @@ class NanoDrive(ActuatorInterface):
             axes = self._axes.keys()
         for axis in axes:
             answer = self._dll.MCL_SingleReadN(self._axes_cfg[axis], self._device_handle)
-            if answer < 0:
-                self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
-            else:
-                pos[axis] = answer*1e-6
+            #if answer < 0:
+            #    self.log.error('DEVICE ERROR : {}'.format(ERRORS[abs(answer)]))
+            #else:
+            pos[axis] = answer*1e-6
         return pos
 
     def abort(self, axes=None):
