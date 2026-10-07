@@ -152,6 +152,8 @@ nicard_apd_instreamer:
         max_sample_rate: 1e5  # optional, keep below your SPCM's max count rate
         max_channel_samples_buffer: 10000000  # optional
         read_write_timeout: 10  # optional
+        reset_on_activate: True  # optional, set False if the bitfile is shared with
+                                 # ni_r_series_pulser so the pulse memory is not wiped
 
 Example config for copy-paste (mixed digital + analog channels, custom bitfile using a raw-ticks
 register instead of a microsecond one — override every name explicitly):
@@ -290,6 +292,8 @@ class NIRSeriesFPGAInStreamer(DataInStreamInterface, DetectorInterface):
                                                missing='info',
                                                constructor=lambda x: max(int(round(x)), 1024**2))
     _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
+    # Set to False when the bitfile is shared with another module (e.g. ni_r_series_pulser)
+    _reset_on_activate = ConfigOption('reset_on_activate', default=True, missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -326,7 +330,9 @@ class NIRSeriesFPGAInStreamer(DataInStreamInterface, DetectorInterface):
             # register write still "succeeds" but has no effect (nothing is reading it), and
             # every FIFO read blocks for the full timeout with zero elements ever produced.
             # reset() + run() is a harmless no-op if the bitfile auto-runs on download anyway.
-            self._session.reset()
+            # Skip the reset if another module shares this bitfile, it would wipe its FPGA state.
+            if self._reset_on_activate:
+                self._session.reset()
             self._session.run()
         except Exception as err:
             raise RuntimeError(
