@@ -36,8 +36,26 @@ is selected with the `trigger_edge` config option.
 The instrument dwell time is limited to 10 ms ... 100 s per point. With external point
 triggering, the dwell time is set to the shortest allowed value so that the trigger rate, not the
 dwell time, paces the scan. The maximum external point trigger rate is not specified in the
-programming guide, hence `max_scan_sample_rate` is a config option. Validate it on your unit
+programming guide, hence `scan_sample_rate_limits` is a config option. Validate it on your unit
 before relying on fast scans.
+
+-----------------------------------------------------------------------------------------------
+HARDWARE LIMITS
+-----------------------------------------------------------------------------------------------
+The SSG5000X SCPI command set has no MIN/MAX limit queries, so the limits are derived from the
+model reported by "*IDN?" and the SSG5000X datasheet:
+  * Frequency: 9 kHz to 4 GHz (SSG5040X, SSG5040X-V) or 6 GHz (SSG5060X, SSG5060X-V)
+  * Level setting range, depending on frequency f:
+        9 kHz <= f < 100 kHz:  -110 dBm to  +7 dBm
+      100 kHz <= f <   1 MHz:  -110 dBm to +15 dBm
+        1 MHz <= f <   4 GHz:  -140 dBm to +26 dBm
+        4 GHz <= f <=  6 GHz:  -130 dBm to +24 dBm
+    The constraints report the overall range and every CW/scan setting is additionally checked
+    against the range of the frequency band(s) it uses.
+  * Scan size: 2 to 65535 points for EQUIDISTANT_SWEEP (step sweep), at most 500 points for
+    JUMP_LIST (list sweep)
+`frequency_limits` and `power_limits` are optional and can only narrow these limits, e.g. to
+protect an amplifier connected to the output.
 
 Example config for copy-paste:
 
@@ -47,9 +65,8 @@ mw_source_siglent:
         visa_address: 'TCPIP0::192.168.1.100::inst0::INSTR'  # or 'USB0::0xF4EC::...::INSTR'
         comm_timeout: 10  # in seconds
         trigger_edge: 'rising'  # optional, 'rising' or 'falling'
-        frequency_limits: [9e3, 6e9]  # optional, SSG5060X(-V) defaults
-        power_limits: [-140, 20]  # optional, in dBm
-        max_scan_size: 4000  # optional, max number of points in a frequency scan
+        frequency_limits: [2.5e9, 3.2e9]  # optional, narrows the model frequency range
+        power_limits: [-140, 0]  # optional, narrows the model level range (dBm)
         scan_sample_rate_limits: [0.01, 100]  # optional, external point trigger rate in Hz
         reset_on_activate: False  # optional, send *RST on activation
 """
@@ -76,14 +93,23 @@ class MicrowaveSiglentSSG5000X(MicrowaveInterface):
                                  default='rising',
                                  missing='nothing',
                                  constructor=lambda x: str(x).lower())
-    _frequency_limits = ConfigOption('frequency_limits', default=(9e3, 6e9), missing='nothing')
-    _power_limits = ConfigOption('power_limits', default=(-140, 20), missing='nothing')
-    _max_scan_size = ConfigOption('max_scan_size', default=4000, missing='nothing')
+    _frequency_limits = ConfigOption('frequency_limits', default=None, missing='nothing')
+    _power_limits = ConfigOption('power_limits', default=None, missing='nothing')
     _scan_sample_rate_limits = ConfigOption('scan_sample_rate_limits',
                                             default=(0.01, 100),
                                             missing='nothing')
     _reset_on_activate = ConfigOption('reset_on_activate', default=False, missing='nothing')
 
+    # Hardware limits from the SSG5000X datasheet, see module docstring
+    _MIN_FREQUENCY = 9e3
+    _MODEL_MAX_FREQUENCY = {'SSG5040X': 4e9, 'SSG5060X': 6e9}
+    # (band start in Hz, min level in dBm, max level in dBm), each band ends at the next start
+    _LEVEL_SETTING_RANGES = ((9e3, -110., 7.),
+                             (100e3, -110., 15.),
+                             (1e6, -140., 26.),
+                             (4e9, -130., 24.))
+    _MAX_STEP_SWEEP_POINTS = 65535
+    _MAX_LIST_SWEEP_POINTS = 500
     # Dwell time limits per sweep point as stated in the SSG5000X programming guide
     _MIN_DWELL_TIME = 10e-3
     _MAX_DWELL_TIME = 100.
@@ -120,9 +146,14 @@ class MicrowaveSiglentSSG5000X(MicrowaveInterface):
             self._rm = None
             self._device = None
             raise
-        if not self._model.upper().startswith('SSG5'):
-            self.log.warning(f'Connected device model "{self._model}" is not a Siglent SSG5000X '
-                             f'series generator. Commands may not work as expected.')
+        try:
+            frequency_limits, power_limits = self._get_hardware_limits()
+        except Exception:
+            self._device.close()
+            self._rm.close()
+            self._rm = None
+            self._device = None
+            raise
 
         if self._reset_on_activate:
             self._command_wait('*RST')
@@ -131,12 +162,14 @@ class MicrowaveSiglentSSG5000X(MicrowaveInterface):
         self._command_wait(':SWEep:STATe OFF')
 
         self._constraints = MicrowaveConstraints(
-            power_limits=tuple(self._power_limits),
-            frequency_limits=tuple(self._frequency_limits),
-            scan_size_limits=(2, int(self._max_scan_size)),
+            power_limits=power_limits,
+            frequency_limits=frequency_limits,
+            scan_size_limits=(2, self._MAX_STEP_SWEEP_POINTS),
             sample_rate_limits=tuple(self._scan_sample_rate_limits),
             scan_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP)
         )
+        self.log.debug(f'Connected to Siglent {self._model}: frequency limits '
+                       f'{frequency_limits} Hz, level limits {power_limits} dBm.')
 
         self._scan_frequencies = None
         self._scan_power = self._constraints.min_power
@@ -253,6 +286,7 @@ class MicrowaveSiglentSSG5000X(MicrowaveInterface):
             if self.module_state() != 'idle':
                 raise RuntimeError('Unable to set CW parameters. Microwave output active.')
             self._assert_cw_parameters_args(frequency, power)
+            self._assert_level_in_band(power, frequency, frequency)
 
             self._device.write(':SWEep:STATe OFF')
             self._device.write(f':FREQuency {frequency:.6f}')
@@ -290,6 +324,16 @@ class MicrowaveSiglentSSG5000X(MicrowaveInterface):
             if self.module_state() != 'idle':
                 raise RuntimeError('Unable to configure frequency scan. Microwave output active.')
             self._assert_scan_configuration_args(power, frequencies, mode, sample_rate)
+            if mode == SamplingOutputMode.JUMP_LIST:
+                if len(frequencies) > self._MAX_LIST_SWEEP_POINTS:
+                    raise ValueError(
+                        f'JUMP_LIST scan with {len(frequencies):d} points exceeds the '
+                        f'{self._MAX_LIST_SWEEP_POINTS:d} point list sweep limit of the '
+                        f'SSG5000X. Use fewer points/oversampling or EQUIDISTANT_SWEEP mode.'
+                    )
+                self._assert_level_in_band(power, min(frequencies), max(frequencies))
+            else:
+                self._assert_level_in_band(power, *sorted(frequencies[:2]))
 
             self._device.write(':SWEep:STATe OFF')
             # With STATe FREQuency only the frequency is swept and the level stays at :POWer
@@ -340,6 +384,56 @@ class MicrowaveSiglentSSG5000X(MicrowaveInterface):
 
             self._device.write(':SWEep:STATe OFF')
             self._command_wait(':SWEep:STATe FREQuency')
+
+    def _get_hardware_limits(self):
+        """ Derives frequency and level limits from the connected model (see module docstring),
+        narrowed by the optional config options.
+
+        @return tuple: ((min_frequency, max_frequency), (min_power, max_power))
+        """
+        series = self._model.upper().split('-')[0]
+        if series not in self._MODEL_MAX_FREQUENCY:
+            raise RuntimeError(f'Unsupported model "{self._model}". Supported Siglent models are '
+                               f'{", ".join(self._MODEL_MAX_FREQUENCY)} (and -V variants).')
+        frequency_limits = (self._MIN_FREQUENCY, self._MODEL_MAX_FREQUENCY[series])
+        power_limits = self._level_range(*frequency_limits)
+        if self._frequency_limits is not None:
+            frequency_limits = self._narrow_limits(frequency_limits,
+                                                   self._frequency_limits,
+                                                   'frequency_limits')
+            power_limits = self._level_range(*frequency_limits)
+        if self._power_limits is not None:
+            power_limits = self._narrow_limits(power_limits, self._power_limits, 'power_limits')
+        return frequency_limits, power_limits
+
+    @staticmethod
+    def _narrow_limits(hw_limits, cfg_limits, name):
+        low, high = max(hw_limits[0], min(cfg_limits)), min(hw_limits[1], max(cfg_limits))
+        if low >= high:
+            raise ValueError(f'Config option "{name}" {tuple(cfg_limits)} does not overlap with '
+                             f'the hardware limits {hw_limits}.')
+        return float(low), float(high)
+
+    def _level_range(self, min_frequency, max_frequency):
+        """ Widest level setting range over all frequency bands touched by
+        [min_frequency, max_frequency].
+        """
+        bands = self._bands_in_range(min_frequency, max_frequency)
+        return min(band[1] for band in bands), max(band[2] for band in bands)
+
+    def _bands_in_range(self, min_frequency, max_frequency):
+        band_ends = [band[0] for band in self._LEVEL_SETTING_RANGES[1:]] + [np.inf]
+        return [band for band, end in zip(self._LEVEL_SETTING_RANGES, band_ends)
+                if band[0] <= max_frequency and end > min_frequency]
+
+    def _assert_level_in_band(self, power, min_frequency, max_frequency):
+        """ Checks the level against the datasheet level setting range of every frequency band
+        touched by [min_frequency, max_frequency].
+        """
+        for start, low, high in self._bands_in_range(min_frequency, max_frequency):
+            if not low <= power <= high:
+                raise ValueError(f'Level {power} dBm is outside the SSG5000X level setting range '
+                                 f'[{low}, {high}] dBm for frequencies from {start:.3e} Hz.')
 
     def _write_step_sweep(self, start, stop, points):
         """ Configures the equidistant step sweep. Caller must hold the thread lock. """
